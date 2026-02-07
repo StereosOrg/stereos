@@ -1,0 +1,50 @@
+{
+  "name": "stereos",
+  "version": "1.0.0",
+  "description": "LLM Provenance Platform - Engineering-first provenance tracking for AI-generated code",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "tsx watch apps/api/src/index.ts",
+    "dev:web": "cd apps/web && npm run dev",
+    "build": "npm run build:api && npm run build:web",
+    "build:api": "tsc -p apps/api/tsconfig.json",
+    "build:web": "cd apps/web && npm run build",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:push": "drizzle-kit push",
+    "db:migrate:015": "bun run scripts/run-migrate-015.ts",
+    "db:migrate:016": "bun run scripts/run-migrate-016.ts",
+    "db:migrate:017": "bun run scripts/run-migrate-017.ts",
+    "db:migrate:018": "bun run scripts/run-migrate-018.ts",
+    "db:migrate:019": "bun run scripts/run-migrate-019.ts",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "better-auth": "^1.1.15",
+    "drizzle-orm": "^0.39.1",
+    "hono": "^4.6.20",
+    "postgres": "^3.4.5",
+    "stripe": "^17.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "concurrently": "^9.1.2",
+    "drizzle-kit": "^0.30.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

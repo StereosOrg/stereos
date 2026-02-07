@@ -1,0 +1,90 @@
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { logger } from 'hono/logger';
+import { createDb } from '@stereos/shared/db';
+import { createAuth } from './lib/auth.js';
+import type { AppVariables } from './types/app.js';
+import eventsRouter from './routes/events.js';
+import authRouter from './routes/auth.js';
+import billingRouter from './routes/billing.js';
+import usersRouter from './routes/users.js';
+import onboardingRouter from './routes/onboarding.js';
+import invitesRouter from './routes/invites.js';
+
+type Env = {
+  DATABASE_URL: string;
+  BETTER_AUTH_SECRET: string;
+  STRIPE_SECRET_KEY: string;
+  STRIPE_PRICE_ID: string;
+  STRIPE_WEBHOOK_SECRET: string;
+  BASE_URL: string;
+  TRUSTED_ORIGINS?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+};
+
+const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
+
+app.use('*', logger());
+app.use('*', cors({
+  origin: (origin, c) => {
+    const allowed = (c.env.TRUSTED_ORIGINS ?? c.env.BASE_URL ?? '')
+      .split(',')
+      .map((o: string) => o.trim())
+      .filter(Boolean);
+    if (allowed.length === 0) return '*';
+    return allowed.includes(origin) ? origin : allowed[0];
+  },
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
+
+// Inject request-scoped db and auth (Neon serverless; required for Workers)
+app.use('*', async (c, next) => {
+  const db = createDb(c.env.DATABASE_URL);
+  const auth = createAuth(db, {
+    baseURL: c.env.BASE_URL,
+    trustedOrigins: c.env.TRUSTED_ORIGINS,
+    GITHUB_CLIENT_ID: c.env.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: c.env.GITHUB_CLIENT_SECRET,
+    GOOGLE_CLIENT_ID: c.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: c.env.GOOGLE_CLIENT_SECRET,
+  });
+  c.set('db', db);
+  c.set('auth', auth);
+  await next();
+});
+
+app.get('/health', (c) =>
+  c.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: 'cloudflare-workers',
+  })
+);
+
+app.route('/v1', eventsRouter);
+app.route('/v1', authRouter);
+app.route('/v1', billingRouter);
+app.route('/v1', usersRouter);
+app.route('/v1', onboardingRouter);
+app.route('/v1', invitesRouter);
+
+app.notFound((c) => {
+  if (c.req.path.startsWith('/v1/') || c.req.path === '/health') {
+    return c.json({ error: 'Not Found' }, 404);
+  }
+  return c.json({ error: 'Not Found' }, 404);
+});
+
+// Error handler
+app.onError((err, c) => {
+  console.error('Server error:', err);
+  return c.json({ error: 'Internal Server Error' }, 500);
+});
+
+// Export the handler for Cloudflare Workers
+export default app;

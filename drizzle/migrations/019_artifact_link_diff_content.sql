@@ -1,0 +1,1 @@
+ALTER TABLE "ArtifactLink" ADD COLUMN IF NOT EXISTS diff_content TEXT;

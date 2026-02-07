@@ -1,39 +1,20 @@
 {
   "name": "@stereos/sdk",
-  "version": "0.1.1",
-  "description": "Client SDK for Stereos - Convert Gaussian splats to glTF",
+  "version": "1.0.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
-  "files": [
-    "dist",
-    "wasm"
-  ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build"
-  },
-  "keywords": [
-    "gaussian-splatting",
-    "3dgs",
-    "gltf",
-    "glb",
-    "wasm",
-    "converter"
-  ],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/stereos-dev/stereos"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.3"
+    "typescript": "^5.7.3"
   }
 }

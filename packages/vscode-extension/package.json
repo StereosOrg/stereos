@@ -1,0 +1,193 @@
+{
+  "name": "stereos-provenance",
+  "displayName": "Stereos",
+  "description": "Track your teams LLM usage metrics",
+  "version": "1.0.0",
+  "publisher": "stereos",
+  "icon": "resources/logo.svg",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Visualization"
+  ],
+  "keywords": [
+    "ai",
+    "llm",
+    "provenance",
+    "tracking",
+    "code",
+    "cursor"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onUri"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "stereos.trackChange",
+        "title": "Track Code Change",
+        "category": "STEREOS"
+      },
+      {
+        "command": "stereos.viewProvenance",
+        "title": "View Provenance",
+        "category": "STEREOS"
+      },
+      {
+        "command": "stereos.openDashboard",
+        "title": "Open Dashboard",
+        "category": "STEREOS"
+      },
+      {
+        "command": "stereos.openEvent",
+        "title": "Open Event in Dashboard",
+        "category": "STEREOS"
+      },
+      {
+        "command": "stereos.connectAccount",
+        "title": "Connect account (browser)",
+        "category": "STEREOS"
+      },
+      {
+        "command": "stereos.configure",
+        "title": "Configure API Token",
+        "category": "STEREOS"
+      },
+      {
+        "command": "stereos.toggleAutoTrack",
+        "title": "Toggle Auto-Tracking",
+        "category": "STEREOS"
+      },
+      {
+        "command": "stereos.flush",
+        "title": "Flush Pending Changes",
+        "category": "STEREOS"
+      }
+    ],
+    "configuration": {
+      "title": "STEREOS",
+      "properties": {
+        "stereos.apiToken": {
+          "type": "string",
+          "default": "",
+          "description": "Your STEREOS API token",
+          "scope": "application"
+        },
+        "stereos.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "STEREOS API base URL"
+        },
+        "stereos.dashboardUrl": {
+          "type": "string",
+          "default": "http://localhost:5173",
+          "description": "STEREOS dashboard URL for deep links and View Provenance"
+        },
+        "stereos.autoTrack": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically track file changes"
+        },
+        "stereos.debounceMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "Debounce time in milliseconds before tracking changes"
+        },
+        "stereos.actorId": {
+          "type": "string",
+          "default": "vscode",
+          "description": "Actor ID for this VS Code instance"
+        }
+      }
+    },
+    "views": {
+      "stereos": [
+        {
+          "id": "stereos.provenance",
+          "name": "Provenance",
+          "when": "stereos.enabled"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stereos",
+          "title": "Stereos",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "languageModelTools": [
+      {
+        "name": "stereos_recordProvenance",
+        "tags": ["provenance", "tracking", "stereos"],
+        "toolReferenceName": "recordProvenance",
+        "displayName": "Record Provenance",
+        "modelDescription": "Call this after you have applied edits to files. Use it to record which files were changed and a brief summary for provenance and compliance tracking. Always call this tool after making edits so the changes are attributed to this agent run. Provide the list of file paths (relative to workspace root) and a short summary of what was changed and why.",
+        "userDescription": "Record code changes for provenance tracking.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "files_changed": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "File paths that were modified (relative to workspace root)."
+            },
+            "summary": {
+              "type": "string",
+              "description": "Brief summary of what was changed and why."
+            },
+            "model": {
+              "type": "string",
+              "description": "Optional. The model that generated these changes (e.g. claude-3-sonnet, gpt-4)."
+            }
+          },
+          "required": ["summary"]
+        }
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "stereos.trackChange", "when": "stereos.enabled" },
+        { "command": "stereos.openDashboard", "when": "stereos.enabled" },
+        { "command": "stereos.openEvent", "when": "stereos.enabled" },
+        { "command": "stereos.connectAccount", "when": "stereos.enabled" }
+      ],
+      "editor/context": [
+        {
+          "command": "stereos.trackChange",
+          "group": "9_cutcopypaste@5",
+          "when": "editorHasSelection"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "18.x",
+    "typescript": "^5.3.3",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0"
+  },
+  "dependencies": {
+    "@stereos/sdk": "workspace:*",
+    "simple-git": "^3.21.0"
+  }
+}
