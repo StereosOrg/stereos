@@ -1,4 +1,4 @@
-# STEREOS - LLM Provenance Platform
+# Stereos - LLM Provenance Platform
 
 An engineering-first platform that records **how code came to exist**, not just usage metrics. The system captures structured cognition events from agents and partner tools (Cursor, Kilo Code, etc.) and links them to Git artifacts.
 
