@@ -210,30 +210,26 @@ router.post('/onboarding/confirm-checkout', requireAuth as (c: unknown, next: ()
   return c.json({ success: true });
 });
 
-// GET /v1/customers/me - Get current user's customer info
+// GET /v1/customers/me - Get current user's customer (owner or invited member's workspace)
 router.get('/customers/me', requireAuth as (c: unknown, next: () => Promise<void>) => Promise<void>, async (c) => {
   const user = c.get('user')!;
-  const db = c.get('db');
 
   try {
-    const customer = await db.query.customers.findFirst({
-      where: eq(customers.user_id, user.id),
-      columns: {
-        id: true,
-        company_name: true,
-        billing_email: true,
-        logo_url: true,
-        payment_info_provided: true,
-        onboarding_completed: true,
-        billing_status: true,
-      },
-    });
-
+    const customer = await getCustomerForUser(c as unknown as import('../types/context.js').HonoContext, user.id);
     if (!customer) {
       return c.json({ error: 'Customer not found' }, 404);
     }
-
-    return c.json({ customer });
+    return c.json({
+      customer: {
+        id: customer.id,
+        company_name: customer.company_name,
+        billing_email: customer.billing_email,
+        logo_url: customer.logo_url,
+        payment_info_provided: customer.payment_info_provided,
+        onboarding_completed: customer.onboarding_completed,
+        billing_status: customer.billing_status,
+      },
+    });
   } catch (error) {
     console.error('Error fetching customer:', error);
     return c.json({ error: 'Failed to fetch customer' }, 500);
