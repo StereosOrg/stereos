@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { partners, customers, apiTokens, verifications, users, sessions } from '@stereos/shared/schema';
+import { partners, customers, apiTokens, verifications, users, sessions, accounts } from '@stereos/shared/schema';
 import { newSessionToken, newUuid, newCustomerId, newApiToken } from '@stereos/shared/ids';
 import { eq, and, gt } from 'drizzle-orm';
 import { createStripeCustomer } from '../lib/stripe.js';
@@ -28,8 +28,24 @@ router.post('/auth/magic-link/exchange', async (c) => {
   } catch {
     email = row.value;
   }
-  const [user] = await db.query.users.findMany({ where: eq(users.email, email), limit: 1 });
-  if (!user) return c.json({ error: 'Invalid or expired link' }, 400);
+  let user = (await db.query.users.findMany({ where: eq(users.email, email), limit: 1 }))[0];
+  if (!user) {
+    const userId = newUuid();
+    await db.insert(users).values({
+      id: userId,
+      email: email.toLowerCase(),
+      emailVerified: true,
+      role: 'user',
+    });
+    await db.insert(accounts).values({
+      id: newUuid(),
+      userId,
+      accountId: userId,
+      provider: 'credential',
+      type: 'credential',
+    });
+    user = (await db.query.users.findFirst({ where: eq(users.id, userId) }))!;
+  }
 
   // Use a distinct prefix so our tokens are distinguishable from better-auth’s (e.g. nanoid-style); both are valid.
   const sessionToken = newSessionToken();
