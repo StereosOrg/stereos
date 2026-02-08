@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, ArrowRight, ArrowLeft } from 'lucide-react';
+import { ArrowRight, ArrowLeft } from 'lucide-react';
+import { StereosLogo } from '../components/StereosLogo';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 
 const titles = [
@@ -98,7 +99,7 @@ export function Onboarding() {
                 boxShadow: '4px 4px 0 var(--border-color)',
               }}
             >
-              <Zap size={24} color="white" />
+              <StereosLogo size={24} color="white" />
             </div>
             <span style={{ fontSize: '28px', fontWeight: 800 }}>STEREOS</span>
           </div>

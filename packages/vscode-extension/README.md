@@ -25,8 +25,29 @@ npm run compile
 ```bash
 npm install -g @vscode/vsce
 vsce package
-# Then install the .vsix file in VS Code
+# Then install the .vsix file in VS Code: Extensions → ... → Install from VSIX
 ```
+
+## Publishing to the Marketplace
+
+1. **Create a publisher** (one-time): Go to [Visual Studio Marketplace](https://marketplace.visualstudio.com/) → sign in with Microsoft → **Publish extension** → create a publisher (e.g. `stereos`). The `package.json` already has `"publisher": "stereos"`; use that ID or update it to match your publisher.
+
+2. **Get a Personal Access Token (PAT)**:
+   - [Azure DevOps](https://dev.azure.com) → User settings (top right) → **Personal access tokens**
+   - New token, scope **Custom defined** → **Marketplace** → **Manage** (read & publish)
+   - Copy the token (you won’t see it again).
+
+3. **Login and publish** (from `packages/vscode-extension`):
+   ```bash
+   npm run compile
+   npx @vscode/vsce login stereos   # paste your PAT when prompted
+   npx @vscode/vsce publish
+   ```
+   Or with a `.vsix` first: `npx @vscode/vsce package` then `npx @vscode/vsce publish -p YOUR_PAT path/to/stereos-provenance-1.0.0.vsix`.
+
+4. **Bump version** before each publish: in `package.json` update `"version": "1.0.0"` (e.g. to `1.0.1`), then run `vsce publish` again.
+
+5. **Display name and icon**: The Extensions sidebar shows **Stereos** (from `displayName`) and the icon from `resources/extension-icon.svg` when the extension is published. When installing from a local `.vsix`, some builds may show the extension ID (`stereos.stereos-provenance`) until you publish to the Marketplace.
 
 ## Configuration
 
@@ -36,8 +57,6 @@ Set your STEREOS API token:
 - Or set in settings: `stereos.apiToken`, or use **Configure API Token** to paste a token (stored in VS Code secret storage).
 
 Other settings:
-- `stereos.baseUrl` - API base URL (default: http://localhost:3000)
-- `stereos.dashboardUrl` - Dashboard URL for View Provenance and deep links (default: http://localhost:5173)
 - `stereos.autoTrack` - Enable auto-tracking (default: true)
 - `stereos.debounceMs` - Debounce time in ms (default: 5000)
 - `stereos.actorId` - Actor identifier (default: vscode)

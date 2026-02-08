@@ -27,8 +27,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const { createStereos } = await import('@stereos/sdk');
 
   const config = vscode.workspace.getConfiguration('stereos');
-  let baseUrl = config.get<string>('baseUrl') || 'http://localhost:3000';
-  let dashboardUrl = (config.get<string>('dashboardUrl') || 'http://localhost:5173').replace(/\/$/, '');
+  const baseUrl = 'https://stereos.jdbohrman.workers.dev';
+  const dashboardUrl = 'https://stereos.netlify.app';
 
   // Token: prefer secretStorage (set by deep link or Configure), then config (manual settings.json).
   let tokenCache: string | null | undefined = undefined;
@@ -94,12 +94,8 @@ export async function activate(context: vscode.ExtensionContext) {
           .then(() => {
             tokenCache = newToken;
             stereosInstance = null;
-            const base = params.get('baseUrl');
-            const dash = params.get('dashboardUrl');
-            if (base) baseUrl = base.replace(/\/$/, '');
-            if (dash) dashboardUrl = dash.replace(/\/$/, '');
-            ensureWatchers();
-            vscode.window.showInformationMessage('STEREOS: Account connected. You can send events from this workspace.');
+            onConnected();
+            vscode.window.showInformationMessage('Stereos: Account connected. You can send events from this workspace.');
           })
           .catch(() => {
             vscode.window.showErrorMessage('STEREOS: Failed to store token.');
@@ -125,6 +121,45 @@ export async function activate(context: vscode.ExtensionContext) {
   const pendingChanges = new Map<string, PendingChange>();
   let flushTimeout: NodeJS.Timeout | null = null;
   let sessionStartTime = Date.now();
+  let lastSendFailed = false;
+  let refreshTree: () => void = () => {};
+
+  // Status bar: single source of truth for connection + pending state
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  context.subscriptions.push(statusBarItem);
+
+  function isConnected(): boolean {
+    const token = tokenCache ?? config.get<string>('apiToken')?.trim();
+    return !!token?.trim();
+  }
+
+  function updateStatusBar(): void {
+    if (lastSendFailed) {
+      statusBarItem.text = '$(warning) Stereos: Send failed';
+      statusBarItem.tooltip = 'Last send failed. Click to open dashboard or connect.';
+      statusBarItem.command = 'stereos.openDashboard';
+      statusBarItem.show();
+      return;
+    }
+    if (!isConnected()) {
+      statusBarItem.text = '$(link) Stereos: Not connected';
+      statusBarItem.tooltip = 'Connect your account to track AI-assisted changes';
+      statusBarItem.command = 'stereos.connectAccount';
+      statusBarItem.show();
+      return;
+    }
+    const pending = pendingChanges.size;
+    if (pending > 0) {
+      statusBarItem.text = `$(sync~spin) Stereos: ${pending} pending`;
+      statusBarItem.tooltip = `Sending changes in ${Math.ceil(debounceMs / 1000)}s`;
+      statusBarItem.command = 'stereos.openDashboard';
+    } else {
+      statusBarItem.text = '$(check) Stereos: Connected';
+      statusBarItem.tooltip = 'Track AI-assisted code changes';
+      statusBarItem.command = 'stereos.openDashboard';
+    }
+    statusBarItem.show();
+  }
 
   // Get comprehensive git info
   async function getGitInfo() {
@@ -296,31 +331,66 @@ export async function activate(context: vscode.ExtensionContext) {
       });
 
       if (result.success) {
+        lastSendFailed = false;
+        pendingChanges.clear();
+        updateStatusBar();
         vscode.window.setStatusBarMessage(
-          `$(check) STEREOS: Tracked ${files.length} change(s)`,
+          `$(check) Stereos: Tracked ${files.length} change(s)`,
           3000
         );
-        pendingChanges.clear();
       } else {
+        lastSendFailed = true;
         console.error('STEREOS tracking failed:', result.error);
+        updateStatusBar();
+        vscode.window.showWarningMessage(
+          `Stereos: Send failed. ${result.error ?? 'Unknown error'}`,
+          'Open Dashboard',
+          'Connect account'
+        ).then(sel => {
+          if (sel === 'Open Dashboard') vscode.commands.executeCommand('stereos.openDashboard');
+          else if (sel === 'Connect account') vscode.commands.executeCommand('stereos.connectAccount');
+        });
       }
     } catch (error) {
+      lastSendFailed = true;
       console.error('STEREOS error:', error);
+      updateStatusBar();
+      vscode.window.showWarningMessage(
+        `Stereos: Send failed. ${error instanceof Error ? error.message : 'Network or server error'}`,
+        'Open Dashboard',
+        'Connect account'
+      ).then(sel => {
+        if (sel === 'Open Dashboard') vscode.commands.executeCommand('stereos.openDashboard');
+        else if (sel === 'Connect account') vscode.commands.executeCommand('stereos.connectAccount');
+      });
     }
   }
 
   // Debounced flush (only runs when watchers are active, i.e. token was present at activation)
   function scheduleFlush() {
     if (!getStereos() || !autoTrack) return;
-    
+
     if (flushTimeout) {
       clearTimeout(flushTimeout);
     }
     flushTimeout = setTimeout(() => trackChanges(), debounceMs);
+    updateStatusBar();
   }
 
-  // Resolve token at activation so watchers can be installed if token exists (secretStorage or config).
-  resolveToken().then(() => ensureWatchers());
+  // Called when token is set (URI handler or Configure) so UI updates
+  function onConnected(): void {
+    lastSendFailed = false;
+    ensureWatchers();
+    updateStatusBar();
+    refreshTree();
+  }
+
+  // Resolve token at activation so watchers are installed if token exists (secretStorage or config).
+  resolveToken().then(() => {
+    ensureWatchers();
+    updateStatusBar();
+    refreshTree();
+  });
 
   // Commands
 
@@ -402,8 +472,12 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
     if (result.success) {
+      lastSendFailed = false;
+      updateStatusBar();
       vscode.window.showInformationMessage(`✅ Tracked: ${intent}`);
     } else {
+      lastSendFailed = true;
+      updateStatusBar();
       vscode.window.showErrorMessage(`❌ Failed: ${result.error}`);
     }
   });
@@ -430,8 +504,8 @@ export async function activate(context: vscode.ExtensionContext) {
       tokenCache = token.trim();
       stereosInstance = null;
       await config.update('apiToken', token.trim(), true);
-      ensureWatchers();
-      vscode.window.showInformationMessage('STEREOS: Account connected. You can send events from this workspace.');
+      onConnected();
+      vscode.window.showInformationMessage('Stereos: Account connected. You can send events from this workspace.');
     }
   });
 
@@ -439,8 +513,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const toggleCmd = vscode.commands.registerCommand('stereos.toggleAutoTrack', async () => {
     const current = config.get<boolean>('autoTrack') ?? true;
     await config.update('autoTrack', !current, true);
+    refreshTree();
     vscode.window.showInformationMessage(
-      `STEREOS: Auto-tracking ${!current ? 'enabled' : 'disabled'}`
+      `Stereos: Auto-tracking ${!current ? 'enabled' : 'disabled'}`
     );
   });
 
@@ -448,7 +523,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const viewCmd = vscode.commands.registerCommand('stereos.viewProvenance', () => {
     const panel = vscode.window.createWebviewPanel(
       'stereosProvenance',
-      'STEREOS Provenance',
+      'Stereos',
       vscode.ViewColumn.One,
       { enableScripts: true }
     );
@@ -472,23 +547,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Force flush command (requires API token)
-  const flushCmd = vscode.commands.registerCommand('stereos.flush', async () => {
-    await resolveToken();
-    if (!getStereos()) {
-      vscode.window.showWarningMessage(
-        'STEREOS: Connect your account to send events.',
-        'Connect account'
-      ).then(sel => { if (sel === 'Connect account') vscode.commands.executeCommand('stereos.connectAccount'); });
-      return;
-    }
-    if (flushTimeout) {
-      clearTimeout(flushTimeout);
-    }
-    await trackChanges(true);
-    vscode.window.showInformationMessage('STEREOS: Changes flushed');
-  });
-
   // Language Model Tool: agent (Copilot/Cursor) can call this after making edits for edit-level provenance
   const recordProvenanceTool = createRecordProvenanceTool({
     getStereos: () => getStereos(),
@@ -509,28 +567,49 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  // Tree view for STEREOS sidebar (so the view has content and the activity bar is visible)
+  // Tree view: auth state when not connected; main actions when connected (no separate Connect link)
+  const treeChangeEmitter = new vscode.EventEmitter<void>();
+  refreshTree = () => treeChangeEmitter.fire();
+
+  function makeItem(label: string, command: string, icon: string, tooltip?: string): vscode.TreeItem {
+    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+    item.command = { command, title: label };
+    item.iconPath = new vscode.ThemeIcon(icon);
+    if (tooltip) item.tooltip = tooltip;
+    return item;
+  }
+
   class StereosTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+    onDidChangeTreeData = treeChangeEmitter.event;
     getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
       return element;
     }
     getChildren(): vscode.TreeItem[] {
+      if (!isConnected()) {
+        return [
+          makeItem('Connect to Stereos', 'stereos.connectAccount', 'link', 'Sign in and link this workspace to track AI-assisted changes'),
+          makeItem('Open Dashboard', 'stereos.openDashboard', 'link-external', 'Sign up or open the web dashboard'),
+        ];
+      }
+      const autoTrackOn = config.get<boolean>('autoTrack') ?? true;
       return [
         makeItem('Open Dashboard', 'stereos.openDashboard', 'link-external'),
-        makeItem('Connect account', 'stereos.connectAccount', 'link-external'),
+        makeItem('View Provenance', 'stereos.viewProvenance', 'book'),
         makeItem('Track Code Change', 'stereos.trackChange', 'edit'),
+        makeItem(autoTrackOn ? 'Toggle auto-tracking (on)' : 'Toggle auto-tracking (off)', 'stereos.toggleAutoTrack', autoTrackOn ? 'check' : 'circle-outline'),
+        makeItem('Open settings', 'stereos.openSettings', 'gear'),
       ];
     }
-  }
-  function makeItem(label: string, command: string, icon: string): vscode.TreeItem {
-    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-    item.command = { command, title: label };
-    item.iconPath = new vscode.ThemeIcon(icon);
-    return item;
   }
   const treeProvider = new StereosTreeProvider();
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('stereos.provenance', treeProvider)
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('stereos.openSettings', () => {
+      vscode.commands.executeCommand('workbench.action.openSettings', 'stereos');
+    })
   );
 
   context.subscriptions.push(
@@ -540,8 +619,7 @@ export async function activate(context: vscode.ExtensionContext) {
     toggleCmd,
     viewCmd,
     openDashboardCmd,
-    openEventCmd,
-    flushCmd
+    openEventCmd
   );
 
   // Set context so all commands show in palette (deep links work without token)

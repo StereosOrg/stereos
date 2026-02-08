@@ -1,4 +1,4 @@
-import { Zap } from 'lucide-react';
+import { StereosLogo } from './StereosLogo';
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -42,7 +42,7 @@ export function AuthLayout({ children, title, subtitle, contentMaxWidth = 420 }:
                 boxShadow: '4px 4px 0 var(--border-color)',
               }}
             >
-              <Zap size={24} color="white" />
+              <StereosLogo size={24} color="white" />
             </div>
             <span style={{ fontSize: '28px', fontWeight: 800 }}>STEREOS</span>
           </div>

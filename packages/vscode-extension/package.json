@@ -4,7 +4,7 @@
   "description": "Track your teams LLM usage metrics",
   "version": "1.0.0",
   "publisher": "stereos",
-  "icon": "resources/logo.svg",
+  "icon": "resources/extension-icon.svg",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -50,7 +50,7 @@
       },
       {
         "command": "stereos.connectAccount",
-        "title": "Connect account (browser)",
+        "title": "Connect account",
         "category": "STEREOS"
       },
       {
@@ -62,11 +62,6 @@
         "command": "stereos.toggleAutoTrack",
         "title": "Toggle Auto-Tracking",
         "category": "STEREOS"
-      },
-      {
-        "command": "stereos.flush",
-        "title": "Flush Pending Changes",
-        "category": "STEREOS"
       }
     ],
     "configuration": {
@@ -77,16 +72,6 @@
           "default": "",
           "description": "Your STEREOS API token",
           "scope": "application"
-        },
-        "stereos.baseUrl": {
-          "type": "string",
-          "default": "http://localhost:3000",
-          "description": "STEREOS API base URL"
-        },
-        "stereos.dashboardUrl": {
-          "type": "string",
-          "default": "http://localhost:5173",
-          "description": "STEREOS dashboard URL for deep links and View Provenance"
         },
         "stereos.autoTrack": {
           "type": "boolean",

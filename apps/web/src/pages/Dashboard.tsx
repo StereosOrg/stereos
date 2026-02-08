@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Activity, GitCommit, Users, Zap, Terminal } from 'lucide-react';
+import { Activity, GitCommit, Users, Terminal } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon } from '../components/ToolIcon';
+import { StereosLogo } from '../components/StereosLogo';
 
 interface DashboardEvent {
   id: string;
@@ -80,7 +81,7 @@ export function Dashboard() {
         <StatCard
           title="Active Agents"
           value={stats?.active_agents ?? 0}
-          icon={Zap}
+          icon={StereosLogo}
           color="var(--bg-pink)"
           description="Distinct agent sources"
         />

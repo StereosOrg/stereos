@@ -1,8 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <!-- Activity bar: logo zoomed ~2.2x and centered with margin so nothing is clipped -->
-  <g transform="translate(-15, -14) scale(0.0344, 0.0516)">
-    <g transform="translate(0, 1024) scale(0.1, -0.1)" fill="currentColor" stroke="none">
-      <path d="M8620 7540 c-65 -21 -756 -237 -915 -286 -99 -31 -263 -82 -365 -114
+import React from 'react';
+
+/** Stereos logo (S mark) - use size/color to match Lucide icon usage. */
+export function StereosLogo({
+  size = 24,
+  color = 'currentColor',
+  className,
+}: {
+  size?: number;
+  color?: string;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      style={{ color, flexShrink: 0 }}
+      aria-hidden
+    >
+      <g transform="scale(0.015625, 0.0234375)" fill={color}>
+        <g transform="translate(0, 1024) scale(0.1, -0.1)">
+          <path
+            d="M8620 7540 c-65 -21 -756 -237 -915 -286 -99 -31 -263 -82 -365 -114
 -102 -32 -392 -122 -645 -200 -253 -78 -496 -153 -540 -168 l-80 -27 0 -387
 c1 -328 3 -390 15 -403 13 -13 881 -440 1020 -502 l55 -24 -35 -27 c-41 -33
 -261 -199 -712 -539 -185 -139 -339 -260 -342 -269 -3 -8 -3 -212 1 -454 5
@@ -34,7 +55,10 @@ l0 138 -197 95 -197 95 64 23 c121 42 110 15 110 264 0 159 -3 223 -12 235
 189 -98z m-1690 120 c-14 -12 -70 -57 -125 -101 -55 -44 -194 -157 -309 -251
 -306 -251 -338 -276 -347 -276 -8 0 -148 61 -449 193 -73 33 -119 58 -110 61
 8 3 242 71 520 152 278 80 577 167 665 194 88 26 165 48 170 49 6 0 -1 -9 -15
--21z"/>
-    </g>
-  </g>
-</svg>
+-21z"
+          />
+        </g>
+      </g>
+    </svg>
+  );
+}

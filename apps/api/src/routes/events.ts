@@ -180,11 +180,13 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
         )
       `);
 
+      // Record usage in DB and report to Stripe meter "provenance_events" (1 unit per provenance event)
       const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
       await trackUsage(db, customerId, partnerId, 'agent_action', 1, {
+        event_id: event.id,
         actor_id: data.actor_id,
         tool: data.tool,
-      }, stripeKey);
+      }, stripeKey, true);
 
       return c.json({ success: true, event_id: event.id }, 201);
     } else if (data.event_type === 'outcome') {
@@ -198,10 +200,10 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
         })
         .returning();
 
-      const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+      // Record outcome in usage table only (no Stripe meter — provenance_events meter is for new provenance events only)
       await trackUsage(db, customerId, partnerId, 'outcome', 1, {
         status: data.status,
-      }, stripeKey);
+      });
 
       return c.json({ success: true, outcome_id: outcome.id }, 201);
     }

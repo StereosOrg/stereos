@@ -6,6 +6,13 @@ import { eq } from 'drizzle-orm';
 // Custom checkout (ui_mode: 'custom') requires 2025-03-31.basil; Stripe Node types may still reference acacia.
 const STRIPE_API_VERSION = '2025-03-31.basil' as '2025-02-24.acacia';
 
+/** Single usage-based plan: $0.12 per unit per month */
+export const USAGE_PRICE_ID = 'price_1Sy4W0FLodImBHZELOgKS6Jc';
+const UNIT_PRICE_CENTS = 12; // $0.12 per unit
+
+/** Stripe meter event name for provenance events (must match meter in Stripe Dashboard) */
+export const STRIPE_METER_EVENT_NAME = 'provenance_events';
+
 /** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
 export function getStripe(apiKey?: string): Stripe | null {
   const key = apiKey ?? (typeof process !== 'undefined' && process.env?.STRIPE_SECRET_KEY);
@@ -15,36 +22,6 @@ export function getStripe(apiKey?: string): Stripe | null {
 // For backward compatibility where env is not passed (Node with process.env)
 const stripe = getStripe();
 export { stripe };
-
-// Pricing configuration
-export interface PricingTier {
-  event_type: string;
-  unit_price: number; // in cents
-  unit: string;
-}
-
-export const pricingTiers: PricingTier[] = [
-  {
-    event_type: 'agent_action',
-    unit_price: 1, // $0.01 per event
-    unit: 'per_event',
-  },
-  {
-    event_type: 'outcome',
-    unit_price: 0.5, // $0.005 per outcome
-    unit: 'per_event',
-  },
-  {
-    event_type: 'storage',
-    unit_price: 10, // $0.10 per GB
-    unit: 'per_gb',
-  },
-];
-
-export function getPricingForEvent(eventType: string): PricingTier {
-  const tier = pricingTiers.find((t) => t.event_type === eventType);
-  return tier || { event_type: eventType, unit_price: 1, unit: 'per_event' };
-}
 
 // Create Stripe customer (optional - returns mock ID if Stripe not configured). Pass stripeApiKey in Workers (c.env.STRIPE_SECRET_KEY).
 export async function createStripeCustomer(email: string, name: string, stripeApiKey?: string): Promise<string> {
@@ -63,51 +40,41 @@ export async function createStripeCustomer(email: string, name: string, stripeAp
   return customer.id;
 }
 
-// Create usage record in Stripe (optional). Pass stripeApiKey in Workers.
-export async function createStripeUsageRecord(
+// Report usage to Stripe via the Billing Meter Events API (provenance_events meter).
+export async function createStripeMeterEvent(
   stripeCustomerId: string,
-  quantity: number,
+  value: number,
   timestamp: Date,
+  idempotencyKey: string,
   stripeApiKey?: string
 ): Promise<void> {
   const client = getStripe(stripeApiKey);
   if (!client) {
-    console.warn('Stripe not configured, skipping usage record');
+    console.warn('Stripe not configured, skipping meter event');
     return;
   }
   if (stripeCustomerId.startsWith('mock_')) {
     return;
   }
   try {
-    const subscriptions = await client.subscriptions.list({
-      customer: stripeCustomerId,
-      status: 'active',
-    });
-
-    if (subscriptions.data.length === 0) {
-      console.warn('No active subscription found for customer:', stripeCustomerId);
-      return;
-    }
-
-    const subscription = subscriptions.data[0];
-    const subscriptionItem = subscription.items.data[0];
-
-    await client.subscriptionItems.createUsageRecord(subscriptionItem.id, {
-      quantity,
-      timestamp: Math.floor(timestamp.getTime() / 1000),
-      action: 'increment',
+    await (client as unknown as { request: (opts: { method: string; path: string; params?: Record<string, unknown> }) => Promise<unknown> }).request({
+      method: 'POST',
+      path: 'billing/meter_events',
+      params: {
+        event_name: STRIPE_METER_EVENT_NAME,
+        'payload[stripe_customer_id]': stripeCustomerId,
+        'payload[value]': String(value),
+        timestamp: Math.floor(timestamp.getTime() / 1000),
+        identifier: idempotencyKey.slice(0, 100),
+      },
     });
   } catch (error: unknown) {
-    // Subscription may use Stripe's new metered billing (meter events), not legacy usage records
-    const msg = error && typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : '';
-    if (msg.includes('not on the legacy metered billing system') || msg.includes('meter_events')) {
-      return; // Skip silently; usage is still recorded in our DB
-    }
-    console.error('Failed to create Stripe usage record:', error);
+    console.error('Failed to create Stripe meter event:', error);
   }
 }
 
-// Track usage event. Pass stripeApiKey in Workers (c.env.STRIPE_SECRET_KEY).
+// Track usage event. Single plan: $0.12 per unit per month. Records in DB.
+// When reportToStripeMeter is true, also sends to Stripe meter "provenance_events" (call this only when a provenance event is created).
 export async function trackUsage(
   db: Database,
   customerId: string,
@@ -115,32 +82,33 @@ export async function trackUsage(
   eventType: string,
   quantity: number = 1,
   metadata?: Record<string, unknown>,
-  stripeApiKey?: string
+  stripeApiKey?: string,
+  reportToStripeMeter: boolean = false
 ): Promise<void> {
-  const pricing = getPricingForEvent(eventType);
-  const totalPrice = (pricing.unit_price * quantity) / 100; // Convert cents to dollars
+  const totalPrice = (UNIT_PRICE_CENTS * quantity) / 100; // cents -> dollars
+  const idempotencyKey = `${customerId}-${eventType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   await db.insert(usageEvents).values({
     customer_id: customerId,
     partner_id: partnerId,
     event_type: eventType,
-    idempotency_key: `${customerId}-${eventType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    idempotency_key: idempotencyKey,
     quantity,
-    unit_price: pricing.unit_price.toString(),
+    unit_price: (UNIT_PRICE_CENTS / 100).toFixed(4),
     total_price: totalPrice.toFixed(4),
-    metadata: { ...metadata, pricing_tier: pricing.unit },
+    metadata: { ...metadata },
   });
 
-  const customer = await db.query.customers.findFirst({
-    where: eq(customers.id, customerId),
-  });
-  if (customer?.customer_stripe_id) {
-    await createStripeUsageRecord(customer.customer_stripe_id, quantity, new Date(), stripeApiKey);
+  if (reportToStripeMeter) {
+    const customer = await db.query.customers.findFirst({
+      where: eq(customers.id, customerId),
+    });
+    if (customer?.customer_stripe_id) {
+      const now = new Date();
+      await createStripeMeterEvent(customer.customer_stripe_id, quantity, now, idempotencyKey, stripeApiKey);
+    }
   }
 }
-
-// Price ID for start-trial embedded checkout (subscription)
-const START_TRIAL_PRICE_ID = 'price_1Sy4W0FLodImBHZELOgKS6Jc';
 
 // Create Stripe Checkout Session (custom UI) for start-trial. Pass stripeApiKey in Workers.
 export async function createEmbeddedCheckoutSession(
@@ -155,14 +123,13 @@ export async function createEmbeddedCheckoutSession(
     return null;
   }
   try {
-    // Request must use Basil API version so Stripe accepts ui_mode: 'custom' (required for initCheckout on the client).
     const createParams = {
       mode: 'subscription',
       ui_mode: 'custom',
       return_url: returnUrl,
       customer: stripeCustomerId,
       metadata: { customer_id: customerId },
-      line_items: [{ price: START_TRIAL_PRICE_ID }],
+      line_items: [{ price: USAGE_PRICE_ID }],
       subscription_data: { metadata: { customer_id: customerId } },
     } as unknown as Stripe.Checkout.SessionCreateParams;
     const session = await client.checkout.sessions.create(createParams, {
@@ -253,14 +220,12 @@ export async function handleStripeWebhook(db: Database, event: Stripe.Event, _st
 }
 
 async function handleSubscriptionCreated(db: Database, subscription: Stripe.Subscription): Promise<void> {
-  // Extract customer_id from subscription metadata
   const customerId = subscription.metadata?.customer_id;
   if (!customerId) {
     console.warn('No customer_id in subscription metadata');
     return;
   }
 
-  // Update customer with payment info and subscription ID
   await db
     .update(customers)
     .set({
@@ -275,11 +240,11 @@ async function handleSubscriptionCreated(db: Database, subscription: Stripe.Subs
 
 async function handlePaymentSucceeded(db: Database, invoice: Stripe.Invoice): Promise<void> {
   if (!invoice.customer) return;
-  
-  const customerId = typeof invoice.customer === 'string' 
-    ? invoice.customer 
+
+  const customerId = typeof invoice.customer === 'string'
+    ? invoice.customer
     : invoice.customer.id;
-    
+
   await db
     .update(customers)
     .set({ billing_status: 'active' })
@@ -288,11 +253,11 @@ async function handlePaymentSucceeded(db: Database, invoice: Stripe.Invoice): Pr
 
 async function handlePaymentFailed(db: Database, invoice: Stripe.Invoice): Promise<void> {
   if (!invoice.customer) return;
-  
-  const customerId = typeof invoice.customer === 'string' 
-    ? invoice.customer 
+
+  const customerId = typeof invoice.customer === 'string'
+    ? invoice.customer
     : invoice.customer.id;
-    
+
   await db
     .update(customers)
     .set({ billing_status: 'past_due' })
@@ -303,7 +268,7 @@ async function handleSubscriptionDeleted(db: Database, subscription: Stripe.Subs
   const customerId = typeof subscription.customer === 'string'
     ? subscription.customer
     : subscription.customer.id;
-    
+
   await db
     .update(customers)
     .set({ billing_status: 'unpaid' })

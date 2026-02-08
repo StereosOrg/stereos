@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <!-- Activity bar: logo zoomed ~2.2x and centered with margin so nothing is clipped -->
-  <g transform="translate(-15, -14) scale(0.0344, 0.0516)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <!-- 128x128 square for Extensions sidebar; logo scaled to fit and match other extension icons -->
+  <g transform="translate(0, 21.33) scale(0.08333)">
     <g transform="translate(0, 1024) scale(0.1, -0.1)" fill="currentColor" stroke="none">
       <path d="M8620 7540 c-65 -21 -756 -237 -915 -286 -99 -31 -263 -82 -365 -114
 -102 -32 -392 -122 -645 -200 -253 -78 -496 -153 -540 -168 l-80 -27 0 -387
