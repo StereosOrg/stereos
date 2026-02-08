@@ -1,10 +1,70 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
-import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
+import { CheckoutProvider, useCheckout, PaymentElement } from '@stripe/react-stripe-js';
 import { CreditCard } from 'lucide-react';
 import { AuthLayout } from '../components/AuthLayout';
 import { API_BASE, getAuthHeaders } from '../lib/api';
+
+// Neobrutalist Appearance API: matches apps/web/src/styles/neobrutalist.css (--dark, --border-width, --shadow-offset, .btn, .input)
+const STRIPE_APPEARANCE = {
+  theme: 'flat' as const,
+  variables: {
+    colorPrimary: '#1a1a1a',
+    colorBackground: '#ffffff',
+    colorText: '#1a1a1a',
+    colorDanger: '#dc2626',
+    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    borderRadius: '0',
+    spacingUnit: '4px',
+  },
+  rules: {
+    '.Input': {
+      border: '3px solid #1a1a1a',
+      boxShadow: '4px 4px 0 #1a1a1a',
+      backgroundColor: '#ffffff',
+    },
+    '.Input:focus': {
+      boxShadow: '4px 4px 0 #1a1a1a',
+    },
+    '.Input--invalid': {
+      borderColor: '#dc2626',
+      boxShadow: '4px 4px 0 #dc2626',
+    },
+    '.Label': {
+      color: '#1a1a1a',
+      fontWeight: '600',
+    },
+    '.Tab': {
+      border: '3px solid #1a1a1a',
+      boxShadow: '4px 4px 0 #1a1a1a',
+      backgroundColor: '#ffffff',
+    },
+    '.Tab:hover': {
+      color: '#1a1a1a',
+    },
+    '.Tab--selected': {
+      borderColor: '#1a1a1a',
+      backgroundColor: '#1a1a1a',
+      color: '#ffffff',
+      boxShadow: '6px 6px 0 #1a1a1a',
+    },
+    '.Button': {
+      border: '3px solid #1a1a1a',
+      backgroundColor: '#1a1a1a',
+      color: '#ffffff',
+      boxShadow: '6px 6px 0 #1a1a1a',
+      fontWeight: '600',
+    },
+    '.Button:hover': {
+      backgroundColor: '#2d2d2d',
+    },
+    '.Error': {
+      color: '#dc2626',
+      fontWeight: '700',
+    },
+  },
+};
 
 // Only use keys that look like publishable keys (pk_...). Never pass secret keys (sk_...) to Stripe.js.
 const rawStripeKey = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string)?.trim() ?? '';
@@ -254,26 +314,100 @@ export function StartTrial() {
             Enter your payment details below. When finished, you’ll be able to continue.
           </p>
         </div>
-        {/* Stripe Embedded Checkout (iframe). Match our aesthetic in Stripe Dashboard → Branding: button #1a1a1a, background #ffffff, font Inter, sharp corners. */}
-        <div
-          id="stripe-embedded-checkout"
-          style={{
-            minHeight: '480px',
-            width: '100%',
-            display: 'block',
-          }}
-        >
-          {stripePromise && clientSecret && (
-            <EmbeddedCheckoutProvider
+        <div style={{ padding: '24px', width: '100%' }}>
+          {error && (
+            <div style={{ ...errorBlockStyle, marginBottom: '20px' }}>{error}</div>
+          )}
+          {stripePromise && (
+            <CheckoutProvider
               key={clientSecret}
               stripe={stripePromise}
-              options={{ clientSecret }}
+              options={{
+                fetchClientSecret: () => Promise.resolve(clientSecret),
+                elementsOptions: { appearance: STRIPE_APPEARANCE },
+              } as any}
             >
-              <EmbeddedCheckout />
-            </EmbeddedCheckoutProvider>
+              <CheckoutForm onError={setError} />
+            </CheckoutProvider>
           )}
         </div>
       </div>
     </AuthLayout>
+  );
+}
+
+function CheckoutForm({ onError }: { onError: (msg: string) => void }) {
+  const navigate = useNavigate();
+  const checkout = useCheckout();
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!checkout || submitting) return;
+      setSubmitting(true);
+      onError('');
+      try {
+        const checkoutSdk = checkout as unknown as {
+          loadActions: () => Promise<{ actions: { confirm: () => Promise<{ message?: string } | null> } }>;
+        };
+        const { actions } = await checkoutSdk.loadActions();
+        const err = await actions.confirm();
+        if (err) {
+          onError(err.message ?? 'Payment failed');
+          setSubmitting(false);
+          return;
+        }
+        const sessionId = (checkout as { id?: string }).id;
+        if (sessionId) {
+          const res = await fetch(`${API_BASE}/v1/onboarding/confirm-checkout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            credentials: 'include',
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+          const data = await res.json();
+          if (data.error) {
+            onError(data.error);
+            setSubmitting(false);
+            return;
+          }
+        }
+        navigate('/', { replace: true });
+      } catch {
+        onError('Something went wrong. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [checkout, submitting, onError, navigate]
+  );
+
+  if (!checkout) return null;
+
+  return (
+    <form onSubmit={handleSubmit} style={{ width: '100%' }}>
+      <div style={{ marginBottom: '20px', minHeight: '280px' }}>
+        <PaymentElement />
+      </div>
+      <button
+        type="submit"
+        disabled={submitting}
+        className="btn btn-primary"
+        style={{
+          width: '100%',
+          padding: '12px 24px',
+          fontSize: '16px',
+          fontWeight: 600,
+          border: 'var(--border-width) solid var(--border-color)',
+          background: 'var(--dark)',
+          color: 'white',
+          boxShadow: 'var(--shadow-offset) var(--shadow-offset) 0 var(--border-color)',
+          cursor: submitting ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {submitting ? 'Processing…' : 'Subscribe'}
+      </button>
+    </form>
   );
 }

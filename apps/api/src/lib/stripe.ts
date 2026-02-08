@@ -3,7 +3,8 @@ import type { Database } from '@stereos/shared/db';
 import { customers, usageEvents } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 
-const STRIPE_API_VERSION = '2025-02-24.acacia' as const;
+// Custom checkout (ui_mode: 'custom') requires 2025-03-31.basil; Stripe Node types may still reference acacia.
+const STRIPE_API_VERSION = '2025-03-31.basil' as '2025-02-24.acacia';
 
 /** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
 export function getStripe(apiKey?: string): Stripe | null {
@@ -141,7 +142,7 @@ export async function trackUsage(
 // Price ID for start-trial embedded checkout (subscription)
 const START_TRIAL_PRICE_ID = 'price_1Sy4W0FLodImBHZELOgKS6Jc';
 
-// Create Stripe Embedded Checkout Session for start-trial. Pass stripeApiKey in Workers.
+// Create Stripe Checkout Session (custom UI) for start-trial. Pass stripeApiKey in Workers.
 export async function createEmbeddedCheckoutSession(
   customerId: string,
   stripeCustomerId: string,
@@ -154,24 +155,25 @@ export async function createEmbeddedCheckoutSession(
     return null;
   }
   try {
-    const session = await client.checkout.sessions.create({
-      mode: 'subscription',
-      ui_mode: 'embedded',
-      return_url: returnUrl,
-      customer: stripeCustomerId,
-      metadata: { customer_id: customerId },
-      line_items: [
-        {
-          price: START_TRIAL_PRICE_ID,
-          // Omit quantity for metered prices (usage_type = metered)
+    const session = await client.checkout.sessions.create(
+      {
+        mode: 'subscription',
+        ui_mode: 'custom' as const,
+        return_url: returnUrl,
+        customer: stripeCustomerId,
+        metadata: { customer_id: customerId },
+        line_items: [
+          {
+            price: START_TRIAL_PRICE_ID,
+          },
+        ],
+        subscription_data: {
+          metadata: {
+            customer_id: customerId,
+          },
         },
-      ],
-      subscription_data: {
-        metadata: {
-          customer_id: customerId,
-        },
-      },
-    });
+      } as Parameters<Stripe['checkout']['sessions']['create']>[0]
+    );
     return session.client_secret ? { clientSecret: session.client_secret } : null;
   } catch (error) {
     console.error('Failed to create embedded checkout session:', error);
