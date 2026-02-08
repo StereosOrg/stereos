@@ -1,5 +1,5 @@
 /**
- * API base URL. Empty in dev (Vite proxy). Set VITE_API_URL on Netlify to your Worker URL.
+ * API base URL. Empty in dev (Vite proxy). Set VITE_API_URL when building for production (Vercel, Netlify, etc.) to your API origin so auth and API calls hit the same backend.
  */
 export const API_BASE = (import.meta.env.VITE_API_URL as string)?.trim() ?? '';
 

@@ -19,23 +19,38 @@ export function VerifyMagic() {
       return;
     }
     const apiUrl = API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
-    fetch(`${apiUrl}/v1/auth/magic-link/exchange`, {
+    if (!apiUrl) {
+      setError('App misconfiguration: no API URL. Set VITE_API_URL where this app is built.');
+      return;
+    }
+    fetch(`${apiUrl.replace(/\/$/, '')}/v1/auth/magic-link/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok && res.status === 404) {
+          throw new Error('API_NOT_FOUND');
+        }
+        return res.json();
+      })
       .then((data) => {
         if (data.session_token) {
           localStorage.setItem(BEARER_TOKEN_KEY, data.session_token);
-          // Full page redirect so the next load has the token before any React fetch runs
           window.location.href = '/';
           return;
-        } else {
-          setError(data.error || 'Invalid or expired link.');
         }
+        setError(data.error || 'Invalid or expired link.');
       })
-      .catch(() => setError('Something went wrong. Try again.'));
+      .catch((err) => {
+        if (err?.message === 'API_NOT_FOUND') {
+          setError(
+            'Sign-in server not found. Request the link from the same app where you opened this page, or ask the admin to set VITE_API_URL.'
+          );
+        } else {
+          setError('Something went wrong. Try again.');
+        }
+      });
   }, [token, navigate]);
 
   if (error) {

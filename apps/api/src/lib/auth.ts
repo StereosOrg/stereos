@@ -69,7 +69,7 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
       bearer(),
       magicLink({
         sendMagicLink: sendMagicLinkFn,
-        expiresIn: 600, // 10 minutes
+        expiresIn: 86400, // 24 hours so links work when opened from email on same/next day
       }),
     ],
     database: drizzleAdapter(db, {
