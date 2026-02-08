@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon, toolDisplayName } from '../components/ToolIcon';
 
 interface UserProfile {
