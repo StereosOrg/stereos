@@ -12,6 +12,8 @@ const titles = [
   { value: 'vp', label: 'VP Engineering' },
   { value: 'lead', label: 'Tech Lead' },
   { value: 'architect', label: 'Software Architect' },
+  { value: 'devrel', label: 'Designer' },
+  { value: 'designer', label: 'Designer' },
   { value: 'product_manager', label: 'Product Manager' },
 ];
 
