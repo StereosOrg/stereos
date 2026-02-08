@@ -77,6 +77,7 @@ export function UserProfile() {
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/v1/users/${userId}/profile`, {
         credentials: 'include',
+        headers: getAuthHeaders(),
       });
       if (!response.ok) {
         if (response.status === 403) {

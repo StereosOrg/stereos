@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Activity, GitCommit, Users, Zap } from 'lucide-react';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon } from '../components/ToolIcon';
 
 interface DashboardEvent {
@@ -25,12 +25,9 @@ export function Dashboard() {
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard'],
     queryFn: async () => {
-      const token = localStorage.getItem('api_token');
-      const headers: HeadersInit = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
       const response = await fetch(`${API_BASE}/v1/dashboard`, {
         credentials: 'include',
-        headers,
+        headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error('Failed to fetch dashboard');
       return response.json();

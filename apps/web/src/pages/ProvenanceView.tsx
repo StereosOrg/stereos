@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 
 export function ProvenanceView() {
   const [commitSha, setCommitSha] = useState('');
@@ -11,9 +11,8 @@ export function ProvenanceView() {
     queryFn: async () => {
       if (!searchSha) return [];
       const response = await fetch(`${API_BASE}/v1/provenance/by-commit/${searchSha}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('api_token')}`,
-        },
+        credentials: 'include',
+        headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error('Failed to fetch');
       const data = await response.json();

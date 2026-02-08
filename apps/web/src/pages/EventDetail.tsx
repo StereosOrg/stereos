@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon } from '../components/ToolIcon';
 import { DiffView } from '../components/DiffView';
 
@@ -47,12 +47,9 @@ export function EventDetail() {
   const { data, isLoading, error } = useQuery<EventDetailData>({
     queryKey: ['event', eventId],
     queryFn: async () => {
-      const token = localStorage.getItem('api_token');
-      const headers: HeadersInit = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
       const response = await fetch(`${API_BASE}/v1/events/${eventId}`, {
         credentials: 'include',
-        headers,
+        headers: getAuthHeaders(),
       });
       if (!response.ok) {
         if (response.status === 404) throw new Error('Event not found');

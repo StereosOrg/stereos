@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 import { UserPlus } from 'lucide-react';
 
 interface User {
@@ -26,6 +26,7 @@ export function UsersList() {
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/v1/users`, {
         credentials: 'include',
+        headers: getAuthHeaders(),
       });
       if (!response.ok) {
         if (response.status === 403) {
@@ -86,7 +87,7 @@ export function UsersList() {
     try {
       const res = await fetch(`${API_BASE}/v1/invites`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
         body: JSON.stringify({ email: inviteEmail.trim() }),
       });

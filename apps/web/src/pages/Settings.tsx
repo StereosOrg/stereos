@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 import { Copy, Key, Check, User } from 'lucide-react';
 
 interface Customer {
@@ -33,7 +33,7 @@ export function Settings() {
   const [connectVscodeError, setConnectVscodeError] = useState('');
 
   useEffect(() => {
-    fetch(`${API_BASE}/v1/customers/me`, { credentials: 'include' })
+    fetch(`${API_BASE}/v1/customers/me`, { credentials: 'include', headers: getAuthHeaders() })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.customer) setCustomer(data.customer);
@@ -43,7 +43,7 @@ export function Settings() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/v1/me`, { credentials: 'include' })
+    fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.user) {
@@ -68,7 +68,7 @@ export function Settings() {
     try {
       const res = await fetch(`${API_BASE}/v1/tokens`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
         body: JSON.stringify({
           customer_id: customer.id,
@@ -100,7 +100,7 @@ export function Settings() {
     try {
       const res = await fetch(`${API_BASE}/v1/tokens`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
         body: JSON.stringify({
           customer_id: customer.id,
@@ -133,7 +133,7 @@ export function Settings() {
     try {
       const res = await fetch(`${API_BASE}/v1/me`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
         body: JSON.stringify({ image: profileImageUrl.trim() || null }),
       });

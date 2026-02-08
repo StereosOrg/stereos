@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon } from '../components/ToolIcon';
 
 export function EventsSearch() {
@@ -21,12 +21,9 @@ export function EventsSearch() {
         if (value) params.append(key, value);
       });
 
-      const token = localStorage.getItem('api_token');
-      const headers: HeadersInit = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
       const response = await fetch(`${API_BASE}/v1/events/search?${params}`, {
         credentials: 'include',
-        headers,
+        headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error('Failed to fetch');
       return response.json();
