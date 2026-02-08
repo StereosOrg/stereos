@@ -117,6 +117,27 @@ The API is a Hono app that can run on **Node** or **Cloudflare Workers**. The re
 
 ---
 
+## Troubleshooting: Redirect to login after verification / 401 on onboarding
+
+If users are redirected to sign-in after verifying their email, or get **401** when submitting onboarding, the session cookie is not being sent or recognized on cross-origin requests (e.g. frontend on Netlify, API on Workers).
+
+1. **API (Worker) config**
+   - **BASE_URL** in `wrangler.toml` (or vars) must be your **Worker URL** (e.g. `https://stereos.jdbohrman.workers.dev`). This is the auth server URL; cookies are set for this domain.
+   - **TRUSTED_ORIGINS** must include your **frontend** origin (e.g. `https://stereos.netlify.app`). Comma-separate if you have several.
+
+2. **Frontend**
+   - **VITE_API_URL** must be the same Worker URL so auth and API requests go to the same host (and cookies apply).
+
+3. **Cookies**
+   - The API is configured with `SameSite=None` and `Secure` so the session cookie is sent on cross-origin requests. Both frontend and API must use **HTTPS** in production.
+   - In the browser: DevTools → Application → Cookies → select your **API** origin and confirm a `better-auth.session_token` (or similar) cookie exists after sign-in/verification. If it’s missing, the browser may be blocking third-party cookies (e.g. Safari, or strict privacy settings).
+
+4. **If third-party cookies are blocked**
+   - Use the same parent domain for API and frontend (e.g. `api.yourdomain.com` and `app.yourdomain.com`) and configure Better Auth `advanced.crossSubDomainCookies` with that domain, **or**
+   - Run the API behind the same origin as the frontend (e.g. reverse proxy at `yourapp.com/api`).
+
+---
+
 ## Quick reference
 
 | What        | Command / setting |

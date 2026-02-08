@@ -3,6 +3,16 @@ import { users, customers, customerMembers } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 import { HonoMiddlewareContext, RequireAuthContext, RequireOnboardingContext, RequirePaymentContext } from '../types/context.js';
 
+type EnvLike = { TRUSTED_ORIGINS?: string; BASE_URL?: string; FRONTEND_URL?: string } | undefined;
+
+/** Frontend base URL for redirects (Worker: use TRUSTED_ORIGINS; Node: process.env). */
+export function getFrontendBaseUrl(c: HonoMiddlewareContext): string {
+  const env = (c as { env?: EnvLike }).env;
+  const fromEnv = env?.TRUSTED_ORIGINS?.split(',')[0]?.trim() || env?.FRONTEND_URL?.trim();
+  if (fromEnv) return fromEnv;
+  return process.env.FRONTEND_URL || process.env.TRUSTED_ORIGINS?.split(',')[0]?.trim() || process.env.BASE_URL || 'http://localhost:5173';
+}
+
 // Get current user from Better Auth session
 export async function getCurrentUser(c: HonoMiddlewareContext) {
   try {
@@ -93,16 +103,15 @@ export async function requireAuth(c: HonoMiddlewareContext, next: () => Promise<
     const isBrowserRequest = acceptHeader.includes('text/html');
     
     if (isBrowserRequest) {
-      // Redirect to login page
-      const baseUrl = process.env.BASE_URL || 'http://localhost:5173';
+      const baseUrl = getFrontendBaseUrl(c);
       const currentPath = encodeURIComponent(c.req.path);
-      return c.redirect(`${baseUrl}/auth/login?redirect=${currentPath}`, 302);
+      return c.redirect(`${baseUrl}/auth/sign-in?redirect=${currentPath}`, 302);
     } else {
       // Return 401 for API requests
       return c.json({ 
         error: 'Unauthorized',
         needsAuth: true,
-        redirect: '/auth/login'
+        redirect: '/auth/sign-in'
       }, 401);
     }
   }
@@ -127,7 +136,7 @@ export async function requireOnboarding(c: RequireOnboardingContext, next: () =>
   
   // If no customer record or onboarding not completed
   if (!customer || !onboardingDone) {
-    const baseUrl = process.env.BASE_URL || 'http://localhost:5173';
+    const baseUrl = getFrontendBaseUrl(c);
     const acceptHeader = c.req.header('accept') || '';
     const isBrowserRequest = acceptHeader.includes('text/html');
     
@@ -157,7 +166,7 @@ export async function requirePayment(c: RequirePaymentContext, next: () => Promi
 
   // Block if payment not provided
   if (!customer.payment_info_provided) {
-    const baseUrl = process.env.BASE_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+    const baseUrl = getFrontendBaseUrl(c);
     const acceptHeader = c.req.header('accept') || '';
     const isBrowserRequest = acceptHeader.includes('text/html');
     const isAdmin = user && (user as { role?: string }).role === 'admin';

@@ -9,4 +9,8 @@ const authBase = API_BASE
 
 export const authClient = createAuthClient({
   baseURL: authBase || undefined,
+  // Required for cross-origin (e.g. Netlify → Workers): send cookies with every request
+  fetchOptions: {
+    credentials: 'include',
+  },
 });

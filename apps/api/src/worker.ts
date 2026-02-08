@@ -28,18 +28,37 @@ type Env = {
   GOOGLE_CLIENT_SECRET?: string;
 };
 
+function getAllowedOrigin(c: { req: Request; env: Env }): string {
+  const origin = c.req.header('Origin') ?? '';
+  const allowed = (c.env.TRUSTED_ORIGINS ?? c.env.BASE_URL ?? '')
+    .split(',')
+    .map((o: string) => o.trim())
+    .filter(Boolean);
+  if (allowed.length === 0) return '*';
+  return allowed.includes(origin) ? origin : allowed[0];
+}
+
+function addCorsToResponse(c: { req: Request; env: Env; res: Response }, res: Response): Response {
+  if (res.headers.get('Access-Control-Allow-Origin')) return res;
+  const acao = getAllowedOrigin(c);
+  const h = new Headers(res.headers);
+  h.set('Access-Control-Allow-Origin', acao);
+  h.set('Access-Control-Allow-Credentials', 'true');
+  h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 app.use('*', logger());
+// Run first so we run last: after next() we add CORS to any response that's missing it (e.g. auth returns raw Response).
+app.use('*', async (c, next) => {
+  await next();
+  c.res = addCorsToResponse(c, c.res);
+});
 app.use('*', cors({
-  origin: (origin, c) => {
-    const allowed = (c.env.TRUSTED_ORIGINS ?? c.env.BASE_URL ?? '')
-      .split(',')
-      .map((o: string) => o.trim())
-      .filter(Boolean);
-    if (allowed.length === 0) return '*';
-    return allowed.includes(origin) ? origin : allowed[0];
-  },
+  origin: (origin, c) => getAllowedOrigin(c),
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -100,10 +119,11 @@ app.notFound((c) => {
   return c.json({ error: 'Not Found' }, 404);
 });
 
-// Error handler — check Cloudflare Real-time Logs for full error
+// Error handler — check Cloudflare Real-time Logs for full error. Add CORS so browser can read the response.
 app.onError((err, c) => {
   console.error('[Worker error]', err?.message ?? err, err?.stack);
-  return c.json({ error: 'Internal Server Error' }, 500);
+  const res = c.json({ error: 'Internal Server Error' }, 500);
+  return addCorsToResponse(c, res);
 });
 
 // Export the handler for Cloudflare Workers

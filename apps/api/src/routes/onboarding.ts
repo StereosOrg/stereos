@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { users, customers, customerMembers, partners } from '@stereos/shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import { createStripeCustomer, createEmbeddedCheckoutSession, confirmCheckoutSession } from '../lib/stripe.js';
-import { requireAuth, getCurrentUser, getCustomerForUser, getMemberForUser } from '../lib/middleware.js';
+import { requireAuth, getCurrentUser, getCustomerForUser, getMemberForUser, getFrontendBaseUrl } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -176,7 +176,7 @@ router.post('/onboarding/checkout-session', requireAuth as (c: unknown, next: ()
       .where(eq(customers.id, customer.id));
   }
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:5173';
+  const baseUrl = getFrontendBaseUrl(c as unknown as import('../types/context.js').HonoContext);
   const returnUrl = `${baseUrl}/onboarding/start-trial?session_id={CHECKOUT_SESSION_ID}`;
   const result = await createEmbeddedCheckoutSession(
     customer.id,
