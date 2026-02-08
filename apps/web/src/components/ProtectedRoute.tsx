@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -26,6 +26,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     // Check onboarding status
     fetch(`${API_BASE}/v1/onboarding/status`, {
       credentials: 'include',
+      headers: getAuthHeaders(),
     })
       .then((res) => {
         if (res.status === 401 || res.redirected) {

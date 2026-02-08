@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { AuthLayout } from '../components/AuthLayout';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 
 // Only use keys that look like publishable keys (pk_...). Never pass secret keys (sk_...) to Stripe.js.
 const rawStripeKey = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string)?.trim() ?? '';
@@ -29,7 +29,7 @@ export function StartTrial() {
 
     fetch(`${API_BASE}/v1/onboarding/confirm-checkout`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
       body: JSON.stringify({ session_id: sessionId }),
     })
@@ -59,7 +59,7 @@ export function StartTrial() {
   useEffect(() => {
     if (sessionId) return;
     let cancelled = false;
-    fetch(`${API_BASE}/v1/onboarding/status`, { credentials: 'include' })
+    fetch(`${API_BASE}/v1/onboarding/status`, { credentials: 'include', headers: getAuthHeaders() })
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
@@ -81,7 +81,7 @@ export function StartTrial() {
 
     fetch(`${API_BASE}/v1/onboarding/checkout-session`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
     })
       .then((res) => res.json())

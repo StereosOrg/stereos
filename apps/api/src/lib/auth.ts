@@ -1,5 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { bearer } from 'better-auth/plugins';
+import { createAuthMiddleware } from 'better-auth/api';
 import type { Database } from '@stereos/shared/db';
 import * as schema from '@stereos/shared/schema';
 
@@ -36,6 +38,7 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
   const trusted = env.trustedOrigins?.split(',').map((o) => o.trim()).filter(Boolean) || ['http://localhost:5173'];
   return betterAuth({
     secret: env.secret,
+    plugins: [bearer()],
     database: drizzleAdapter(db, {
       provider: 'pg',
       schema,
@@ -44,7 +47,7 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
     account: {
       fields: {
         providerId: 'provider',
-        providerAccountId: 'accountId',
+        accountId: 'accountId',
       },
     },
     session: {
@@ -63,11 +66,30 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
         secure: true,
       },
     },
-    emailVerification: {
-      sendVerificationEmail: env.sendVerificationEmail ?? (async ({ user, url }) => {
-        const { sendVerificationEmail: send } = await import('./email.js');
-        void send(user.email, url);
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        // After email verification: redirect to frontend WITH session token in URL so cross-origin
+        // (e.g. Netlify → Workers) can store it and use Bearer auth when cookies are blocked.
+        if (ctx.path !== '/verify-email') return;
+        const newSession = ctx.context.newSession as { session?: { token?: string }; token?: string; user?: unknown } | undefined;
+        const token = newSession?.session?.token ?? newSession?.token;
+        const callbackURL = ctx.query?.callbackURL as string | undefined;
+        if (token && callbackURL) {
+          const url = new URL(callbackURL);
+          url.searchParams.set('session_token', token);
+          throw ctx.redirect(url.toString());
+        }
       }),
+    },
+    emailVerification: {
+      sendVerificationEmail: env.sendVerificationEmail
+        ? async (data: { user: { email: string }; url: string }) => {
+            await env.sendVerificationEmail!({ user: data.user, url: data.url });
+          }
+        : async (data: { user: { email: string }; url: string }) => {
+            const { sendVerificationEmail: send } = await import('./email.js');
+            await send(data.user.email, data.url);
+          },
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
     },

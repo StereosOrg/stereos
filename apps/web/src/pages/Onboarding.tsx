@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Zap, ArrowRight, ArrowLeft } from 'lucide-react';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getAuthHeaders } from '../lib/api';
 
 const titles = [
   { value: 'engineer', label: 'Engineer' },
@@ -38,6 +38,7 @@ export function Onboarding() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify(formData),

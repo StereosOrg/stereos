@@ -7,6 +7,7 @@ import {
   Settings,
   LogOut,
 } from 'lucide-react';
+import { BEARER_TOKEN_KEY } from '../lib/api';
 import { authClient } from '../lib/auth-client';
 
 export function Layout() {
@@ -105,7 +106,10 @@ export function Layout() {
             >
               <button
                 type="button"
-                onClick={() => authClient.signOut()}
+                onClick={() => {
+                  localStorage.removeItem(BEARER_TOKEN_KEY);
+                  authClient.signOut();
+                }}
                 style={{
                   width: '100%',
                   display: 'flex',

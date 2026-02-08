@@ -28,7 +28,7 @@ type Env = {
   GOOGLE_CLIENT_SECRET?: string;
 };
 
-function getAllowedOrigin(c: { req: Request; env: Env }): string {
+function getAllowedOrigin(c: { req: { header: (name: string) => string | undefined }; env: Env }): string {
   const origin = c.req.header('Origin') ?? '';
   const allowed = (c.env.TRUSTED_ORIGINS ?? c.env.BASE_URL ?? '')
     .split(',')
@@ -38,7 +38,7 @@ function getAllowedOrigin(c: { req: Request; env: Env }): string {
   return allowed.includes(origin) ? origin : allowed[0];
 }
 
-function addCorsToResponse(c: { req: Request; env: Env; res: Response }, res: Response): Response {
+function addCorsToResponse(c: { req: { header: (name: string) => string | undefined }; env: Env; res: Response }, res: Response): Response {
   if (res.headers.get('Access-Control-Allow-Origin')) return res;
   const acao = getAllowedOrigin(c);
   const h = new Headers(res.headers);
