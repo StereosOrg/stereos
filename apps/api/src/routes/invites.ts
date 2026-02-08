@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { users, accounts, customers, invites, customerMembers } from '@stereos/shared/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
+import { getCurrentUser } from '../lib/middleware.js';
 import { sendEmailViaResendFetch, INVITE_EMAIL_HTML } from '../lib/resend-fetch.js';
 import type { AppVariables } from '../types/app.js';
 
@@ -20,15 +21,8 @@ const inviteAcceptSchema = z.object({
 });
 
 async function requireAdmin(c: any, next: any) {
-  const auth = c.get('auth');
-  const db = c.get('db');
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  if (!session?.user) return c.json({ error: 'Unauthorized' }, 401);
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, session.user.id),
-    columns: { id: true, role: true },
-  });
-  if (!user || user.role !== 'admin') return c.json({ error: 'Forbidden - Admin required' }, 403);
+  const user = await getCurrentUser(c);
+  if (!user || (user as { role?: string }).role !== 'admin') return c.json({ error: 'Forbidden - Admin required' }, 403);
   c.set('adminUser', user);
   await next();
 }
