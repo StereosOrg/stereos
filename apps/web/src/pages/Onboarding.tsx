@@ -48,7 +48,7 @@ export function Onboarding() {
         throw new Error(data.error || 'Failed to complete onboarding');
       }
 
-      const data = await response.json();
+      await response.json();
       // Always go to start-trial embedded checkout (no payment links)
       navigate('/onboarding/start-trial');
     } catch (err) {
