@@ -28,6 +28,8 @@ type Env = {
   STRIPE_WEBHOOK_SECRET: string;
   BASE_URL: string;
   TRUSTED_ORIGINS?: string;
+  /** Frontend origin for magic link email (e.g. https://stereos.netlify.app). If unset, first TRUSTED_ORIGINS is used. */
+  FRONTEND_URL?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
   GITHUB_CLIENT_ID?: string;
@@ -107,6 +109,7 @@ app.use('*', async (c, next) => {
       _cachedAuth = createAuth(_cachedDb, {
         baseURL: c.env.BASE_URL,
         trustedOrigins: c.env.TRUSTED_ORIGINS,
+        frontendUrl: c.env.FRONTEND_URL,
         secret: c.env.BETTER_AUTH_SECRET,
         sendVerificationEmail: async ({ user, url }) => {
           if (apiKey) {
