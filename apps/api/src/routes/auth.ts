@@ -7,8 +7,48 @@ import type { AppVariables } from '../types/app.js';
 const router = new Hono<{ Variables: AppVariables }>();
 
 // Better Auth handler
-router.on(['POST', 'GET'], '/auth/*', (c) => {
-  return c.get('auth').handler(c.req.raw);
+// For magic-link verify redirects, append session_token to the redirect URL
+// so the frontend can store it as a Bearer token (cross-origin cookies are
+// often blocked by browsers).
+router.on(['POST', 'GET'], '/auth/*', async (c) => {
+  const response = await c.get('auth').handler(c.req.raw);
+
+  if (
+    c.req.url.includes('magic-link/verify') &&
+    response.status >= 300 &&
+    response.status < 400
+  ) {
+    const location = response.headers.get('location');
+    if (location) {
+      const setCookies =
+        typeof response.headers.getSetCookie === 'function'
+          ? response.headers.getSetCookie()
+          : [];
+      let sessionToken = '';
+      for (const cookie of setCookies) {
+        const match = cookie.match(
+          /(?:__Secure-)?better-auth\.session_token=([^;]+)/,
+        );
+        if (match) {
+          sessionToken = decodeURIComponent(match[1]);
+          break;
+        }
+      }
+      if (sessionToken) {
+        try {
+          const redirectUrl = new URL(location);
+          redirectUrl.searchParams.set('session_token', sessionToken);
+          const headers = new Headers(response.headers);
+          headers.set('location', redirectUrl.toString());
+          return new Response(null, { status: response.status, headers });
+        } catch {
+          // location isn't a valid absolute URL; leave response as-is
+        }
+      }
+    }
+  }
+
+  return response;
 });
 
 // Partner registration

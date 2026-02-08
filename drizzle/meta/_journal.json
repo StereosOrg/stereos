@@ -15,6 +15,13 @@
       "when": 1738913984001,
       "tag": "002_add_rbac_and_user_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770558547129,
+      "tag": "0002_perpetual_black_knight",
+      "breakpoints": true
     }
   ]
 }

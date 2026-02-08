@@ -61,13 +61,14 @@ export const sessions = pgTable('Session', {
   userAgent: text('userAgent'),
 });
 
-export const verificationTokens = pgTable('VerificationToken', {
+export const verifications = pgTable('Verification', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   identifier: text('identifier').notNull(),
-  token: text('token').unique().notNull(),
-  expires: timestamp('expires', { withTimezone: true }).notNull(),
-}, (t) => ({
-  compoundKey: primaryKey({ columns: [t.identifier, t.token] }),
-}));
+  value: text('value').notNull(),
+  expiresAt: timestamp('expiresAt', { withTimezone: true }).notNull(),
+  createdAt: timestamp('createdAt', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updatedAt', { withTimezone: true }).$onUpdate(() => new Date()),
+});
 
 // ── Custom tables ────────────────────────────────────────────────────────
 
