@@ -43,14 +43,21 @@ function getEnv(): AuthEnv {
 export function createAuth(db: Database, envOverrides?: AuthEnv) {
   const env = { ...getEnv(), ...envOverrides };
   const trusted = env.trustedOrigins?.split(',').map((o) => o.trim()).filter(Boolean) || ['http://localhost:5173'];
-  // Build the magic link sender. Workers pass a custom callback; Node falls back to email.ts.
+  // Build the magic link sender. Link goes to FRONTEND with token; frontend exchanges for session (no redirect/cookie parsing).
+  const frontendOrigin = trusted[0] || 'http://localhost:5173';
+  const magicLinkUrl = (token: string) =>
+    `${frontendOrigin}/auth/verify-magic?token=${encodeURIComponent(token)}`;
   const sendMagicLinkFn = env.sendMagicLinkEmail
     ? async (data: { email: string; url: string; token: string }) => {
-        await env.sendMagicLinkEmail!(data);
+        await env.sendMagicLinkEmail!({
+          email: data.email,
+          url: magicLinkUrl(data.token),
+          token: data.token,
+        });
       }
     : async (data: { email: string; url: string; token: string }) => {
         const { sendMagicLinkEmail: send } = await import('./email.js');
-        await send(data.email, data.url);
+        await send(data.email, magicLinkUrl(data.token));
       };
 
   return betterAuth({

@@ -17,6 +17,7 @@ import { SignUp } from './pages/SignUp';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { AcceptInvite } from './pages/AcceptInvite';
 import { AuthCallback } from './pages/AuthCallback';
+import { VerifyMagic } from './pages/VerifyMagic';
 
 function ProtectedLayout() {
   return (
@@ -35,6 +36,7 @@ function App() {
       <Route path="/auth/verify-email" element={<VerifyEmail />} />
       <Route path="/auth/accept-invite" element={<AcceptInvite />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/auth/verify-magic" element={<VerifyMagic />} />
       <Route path="/auth/login" element={<Navigate to="/auth/sign-in" replace />} />
       <Route path="/auth/*" element={<Navigate to="/auth/sign-in" replace />} />
       

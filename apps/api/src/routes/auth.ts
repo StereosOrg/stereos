@@ -6,49 +6,39 @@ import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
-// Better Auth handler
-// For magic-link verify redirects, append session_token to the redirect URL
-// so the frontend can store it as a Bearer token (cross-origin cookies are
-// often blocked by browsers).
-router.on(['POST', 'GET'], '/auth/*', async (c) => {
-  const response = await c.get('auth').handler(c.req.raw);
+// Exchange magic link token for session token (no redirect/cookie parsing).
+// Frontend hits this after user clicks the link in email (link goes to frontend with ?token=).
+router.post('/auth/magic-link/exchange', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { token?: string };
+  const token = body.token?.trim();
+  if (!token) return c.json({ error: 'Missing token' }, 400);
 
-  if (
-    c.req.url.includes('magic-link/verify') &&
-    response.status >= 300 &&
-    response.status < 400
-  ) {
-    const location = response.headers.get('location');
-    if (location) {
-      const setCookies =
-        typeof response.headers.getSetCookie === 'function'
-          ? response.headers.getSetCookie()
-          : [];
-      let sessionToken = '';
-      for (const cookie of setCookies) {
-        const match = cookie.match(
-          /(?:__Secure-)?better-auth\.session_token=([^;]+)/,
-        );
-        if (match) {
-          sessionToken = decodeURIComponent(match[1]);
-          break;
-        }
-      }
-      if (sessionToken) {
-        try {
-          const redirectUrl = new URL(location);
-          redirectUrl.searchParams.set('session_token', sessionToken);
-          const headers = new Headers(response.headers);
-          headers.set('location', redirectUrl.toString());
-          return new Response(null, { status: response.status, headers });
-        } catch {
-          // location isn't a valid absolute URL; leave response as-is
-        }
+  const auth = c.get('auth');
+  const baseUrl = new URL(c.req.url).origin;
+  const verifyUrl = `${baseUrl}/v1/auth/magic-link/verify?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent(baseUrl + '/')}`;
+  const res = await fetch(verifyUrl, { redirect: 'manual' });
+  if (res.status < 300 || res.status >= 400) {
+    return c.json({ error: 'Invalid or expired link' }, 400);
+  }
+  const setCookies =
+    typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+  let sessionToken = res.headers.get('set-auth-token')?.trim() || '';
+  if (!sessionToken) {
+    for (const cookie of setCookies) {
+      const m = cookie.match(/(?:__Secure-)?better-auth\.session_token=([^;]+)/);
+      if (m) {
+        sessionToken = decodeURIComponent(m[1].trim());
+        break;
       }
     }
   }
+  if (!sessionToken) return c.json({ error: 'Invalid or expired link' }, 400);
+  return c.json({ session_token: sessionToken });
+});
 
-  return response;
+// Better Auth handler (everything else)
+router.on(['POST', 'GET'], '/auth/*', async (c) => {
+  return c.get('auth').handler(c.req.raw);
 });
 
 // Partner registration
