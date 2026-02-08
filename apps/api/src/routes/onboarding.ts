@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { users, customers, customerMembers, partners } from '@stereos/shared/schema';
+import { newUuid, newCustomerId } from '@stereos/shared/ids';
 import { eq, sql } from 'drizzle-orm';
 import { createStripeCustomer, createEmbeddedCheckoutSession, confirmCheckoutSession } from '../lib/stripe.js';
 import { requireAuth, getCurrentUser, getCustomerForUser, getMemberForUser, getFrontendBaseUrl } from '../lib/middleware.js';
@@ -108,14 +109,14 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
         .values({
           name: 'Default Partner',
           partner_id: 'default',
-          secret_key: crypto.randomUUID(),
+          secret_key: newUuid(),
         })
         .returning();
       partner = newPartner;
     }
 
     const stripeCustomerId = await createStripeCustomer(data.billingEmail as string, data.companyName as string);
-    const customerId = `cust_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+    const customerId = newCustomerId();
 
     const [customer] = await db
       .insert(customers)

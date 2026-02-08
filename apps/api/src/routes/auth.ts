@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { partners, customers, apiTokens, verifications, users, sessions } from '@stereos/shared/schema';
+import { newSessionToken, newUuid, newCustomerId, newApiToken } from '@stereos/shared/ids';
 import { eq, and, gt } from 'drizzle-orm';
 import { createStripeCustomer } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
@@ -30,7 +31,8 @@ router.post('/auth/magic-link/exchange', async (c) => {
   const [user] = await db.query.users.findMany({ where: eq(users.email, email), limit: 1 });
   if (!user) return c.json({ error: 'Invalid or expired link' }, 400);
 
-  const sessionToken = `ba_${crypto.randomUUID().replace(/-/g, '')}`;
+  // Use a distinct prefix so our tokens are distinguishable from better-auth’s (e.g. nanoid-style); both are valid.
+  const sessionToken = newSessionToken();
   const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
   await db.insert(sessions).values({
     sessionToken,
@@ -54,8 +56,7 @@ router.post('/partners/register', async (c) => {
   const db = c.get('db');
 
   try {
-    // Generate secret key
-    const secretKey = crypto.randomUUID();
+    const secretKey = newUuid();
 
     const [partner] = await db
       .insert(partners)
@@ -100,8 +101,7 @@ router.post('/customers/register', async (c) => {
     const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
     const stripeCustomerId = await createStripeCustomer(email, name, stripeKey);
 
-    // Generate customer ID
-    const customerId = `cust_${crypto.randomUUID().replace(/-/g, '').substr(0, 16)}`;
+    const customerId = newCustomerId();
 
     const [customer] = await db
       .insert(customers)
@@ -135,7 +135,7 @@ router.post('/tokens', async (c) => {
   const db = c.get('db');
 
   try {
-    const token = `sk_${crypto.randomUUID().replace(/-/g, '')}`;
+    const token = newApiToken();
 
     const [apiToken] = await db
       .insert(apiTokens)

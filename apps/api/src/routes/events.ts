@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
+import { newUuid } from '@stereos/shared/ids';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { apiTokens, customers, users, provenanceEvents, artifactLinks, outcomes } from '@stereos/shared/schema';
@@ -170,7 +170,7 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
       await db.execute(sql`
         INSERT INTO "ArtifactLink" (id, event_id, repo, branch, commit, diff_hash, diff_content)
         VALUES (
-          ${randomUUID()},
+          ${newUuid()},
           ${event.id},
           ${data.repo},
           ${data.branch ?? null},

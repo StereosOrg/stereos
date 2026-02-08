@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { users, accounts, customers, invites, customerMembers } from '@stereos/shared/schema';
+import { newUuid, newInviteToken } from '@stereos/shared/ids';
 import { eq, and, isNull } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
 import { getCurrentUser } from '../lib/middleware.js';
@@ -53,7 +54,7 @@ router.post('/invites', requireAdmin, zValidator('json', inviteCreateSchema), as
     }
   }
 
-  const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+  const token = newInviteToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
@@ -141,7 +142,7 @@ router.post('/invites/accept', zValidator('json', inviteAcceptSchema), async (c)
   if (existingUser) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 400);
 
   const hashedPassword = await hashPassword(password);
-  const userId = crypto.randomUUID();
+  const userId = newUuid();
 
   await db.insert(users).values({
     id: userId,
@@ -152,7 +153,7 @@ router.post('/invites/accept', zValidator('json', inviteAcceptSchema), async (c)
   });
 
   await db.insert(accounts).values({
-    id: crypto.randomUUID(),
+    id: newUuid(),
     userId,
     accountId: userId,
     provider: 'credential',

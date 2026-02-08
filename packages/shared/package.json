@@ -16,6 +16,10 @@
     "./db": {
       "import": "./dist/db.js",
       "types": "./dist/db.d.ts"
+    },
+    "./ids": {
+      "import": "./dist/ids.js",
+      "types": "./dist/ids.d.ts"
     }
   },
   "scripts": {

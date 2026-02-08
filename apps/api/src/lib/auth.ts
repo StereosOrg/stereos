@@ -98,6 +98,9 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
         sameSite: 'none',
         secure: true,
       },
+      database: {
+        generateId: () => crypto.randomUUID(),
+      },
     },
     emailAndPassword: {
       enabled: false,
