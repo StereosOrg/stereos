@@ -13,6 +13,7 @@ interface MeUser {
   email: string;
   name: string | null;
   image: string | null;
+  role?: string;
 }
 
 export function Settings() {
@@ -257,7 +258,11 @@ export function Settings() {
         {customerLoading ? (
           <p style={{ color: '#666' }}>Loading…</p>
         ) : !customer ? (
-          <p style={{ color: '#666' }}>Complete onboarding to get a customer ID.</p>
+          <p style={{ color: '#666' }}>
+            {meUser?.role === 'admin'
+              ? 'Complete onboarding to get a customer ID.'
+              : 'Ask your workspace admin to complete setup so you can connect the extension.'}
+          </p>
         ) : (
           <>
             {connectVscodeError && (
@@ -293,7 +298,11 @@ export function Settings() {
         {customerLoading ? (
           <p style={{ color: '#666' }}>Loading…</p>
         ) : !customer ? (
-          <p style={{ color: '#666' }}>Complete onboarding to get a customer ID.</p>
+          <p style={{ color: '#666' }}>
+            {meUser?.role === 'admin'
+              ? 'Complete onboarding to get a customer ID.'
+              : 'Ask your workspace admin to complete setup to create API tokens.'}
+          </p>
         ) : (
           <>
             <div style={{ marginBottom: '16px' }}>
