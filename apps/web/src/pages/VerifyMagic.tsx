@@ -28,7 +28,9 @@ export function VerifyMagic() {
       .then((data) => {
         if (data.session_token) {
           localStorage.setItem(BEARER_TOKEN_KEY, data.session_token);
-          navigate('/', { replace: true });
+          // Full page redirect so the next load has the token before any React fetch runs
+          window.location.href = '/';
+          return;
         } else {
           setError(data.error || 'Invalid or expired link.');
         }

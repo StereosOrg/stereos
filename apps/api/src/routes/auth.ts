@@ -1,38 +1,44 @@
 import { Hono } from 'hono';
-import { partners, customers, apiTokens } from '@stereos/shared/schema';
-import { eq, sql } from 'drizzle-orm';
+import { partners, customers, apiTokens, verifications, users, sessions } from '@stereos/shared/schema';
+import { eq, and, gt } from 'drizzle-orm';
 import { createStripeCustomer } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
-// Exchange magic link token for session token (no redirect/cookie parsing).
-// Frontend hits this after user clicks the link in email (link goes to frontend with ?token=).
+// Exchange magic link token for session token. Verify via DB and create session (no fetch/getSetCookie).
 router.post('/auth/magic-link/exchange', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { token?: string };
   const token = body.token?.trim();
   if (!token) return c.json({ error: 'Missing token' }, 400);
 
-  const auth = c.get('auth');
-  const baseUrl = new URL(c.req.url).origin;
-  const verifyUrl = `${baseUrl}/v1/auth/magic-link/verify?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent(baseUrl + '/')}`;
-  const res = await fetch(verifyUrl, { redirect: 'manual' });
-  if (res.status < 300 || res.status >= 400) {
-    return c.json({ error: 'Invalid or expired link' }, 400);
+  const db = c.get('db');
+  const now = new Date();
+  // Better-auth: identifier = magic link token, value = JSON e.g. {"email":"..."}
+  const row = await db.query.verifications.findFirst({
+    where: and(eq(verifications.identifier, token), gt(verifications.expiresAt, now)),
+  });
+  if (!row) return c.json({ error: 'Invalid or expired link' }, 400);
+
+  let email: string;
+  try {
+    const parsed = JSON.parse(row.value) as { email?: string };
+    email = parsed?.email ?? row.value;
+  } catch {
+    email = row.value;
   }
-  const setCookies =
-    typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
-  let sessionToken = res.headers.get('set-auth-token')?.trim() || '';
-  if (!sessionToken) {
-    for (const cookie of setCookies) {
-      const m = cookie.match(/(?:__Secure-)?better-auth\.session_token=([^;]+)/);
-      if (m) {
-        sessionToken = decodeURIComponent(m[1].trim());
-        break;
-      }
-    }
-  }
-  if (!sessionToken) return c.json({ error: 'Invalid or expired link' }, 400);
+  const [user] = await db.query.users.findMany({ where: eq(users.email, email), limit: 1 });
+  if (!user) return c.json({ error: 'Invalid or expired link' }, 400);
+
+  const sessionToken = `ba_${crypto.randomUUID().replace(/-/g, '')}`;
+  const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+  await db.insert(sessions).values({
+    sessionToken,
+    userId: user.id,
+    expires,
+  });
+  await db.delete(verifications).where(eq(verifications.id, row.id));
+
   return c.json({ session_token: sessionToken });
 });
 

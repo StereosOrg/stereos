@@ -129,7 +129,7 @@ export async function createEmbeddedCheckoutSession(
       metadata: { customer_id: customerId },
       line_items: [
         { price: USAGE_PRICE_ID },
-        { price: 'price_1SyXeyFLodImBHZEmzi5Z2qr' },
+        { price: 'price_1SyXeyFLodImBHZEmzi5Z2qr', quantity: 1 },
       ],
       subscription_data: { metadata: { customer_id: customerId } },
     } as unknown as Stripe.Checkout.SessionCreateParams;

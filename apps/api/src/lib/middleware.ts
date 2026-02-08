@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { users, customers, customerMembers } from '@stereos/shared/schema';
-import { eq } from 'drizzle-orm';
+import { users, customers, customerMembers, sessions } from '@stereos/shared/schema';
+import { eq, and, gt } from 'drizzle-orm';
 import { HonoMiddlewareContext, RequireAuthContext, RequireOnboardingContext, RequirePaymentContext } from '../types/context.js';
 
 type EnvLike = { TRUSTED_ORIGINS?: string; BASE_URL?: string; FRONTEND_URL?: string } | undefined;
@@ -13,19 +13,48 @@ export function getFrontendBaseUrl(c: HonoMiddlewareContext): string {
   return process.env.FRONTEND_URL || process.env.TRUSTED_ORIGINS?.split(',')[0]?.trim() || process.env.BASE_URL || 'http://localhost:5173';
 }
 
-// Get current user from Better Auth session
+// Get current user from Better Auth session (or from Bearer token → Session table for magic-link exchange tokens)
 export async function getCurrentUser(c: HonoMiddlewareContext) {
   try {
     const auth = c.get('auth');
-    const session = await auth.api.getSession({
+    let session = await auth.api.getSession({
       headers: c.req.raw.headers,
     });
-    
-    if (!session?.user?.id) return null;
+
+    // Fallback: magic-link exchange creates sessions we insert directly; better-auth getSession may not find them
+    if (!session?.user?.id) {
+      const bearer = c.req.header('Authorization');
+      const token = bearer?.startsWith('Bearer ') ? bearer.slice(7).trim() : null;
+      if (token) {
+        const db = c.get('db');
+        const now = new Date();
+        const row = await db.query.sessions.findFirst({
+          where: and(eq(sessions.sessionToken, token), gt(sessions.expires, now)),
+          columns: { userId: true },
+        });
+        if (row) {
+          const user = await db.query.users.findFirst({
+            where: eq(users.id, row.userId),
+            columns: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              name: true,
+              image: true,
+              title: true,
+              role: true,
+            },
+          });
+          return user ?? null;
+        }
+      }
+      return null;
+    }
 
     const db = c.get('db');
     const user = await db.query.users.findFirst({
-      where: eq(users.id, session.user.id),
+      where: eq(users.id, session!.user.id),
       columns: {
         id: true,
         email: true,
