@@ -348,15 +348,36 @@ function CheckoutForm({ onError }: { onError: (msg: string) => void }) {
       setSubmitting(true);
       onError('');
       try {
-        const checkoutSdk = checkout as unknown as {
-          loadActions: () => Promise<{ actions: { confirm: () => Promise<{ message?: string } | null> } }>;
-        };
-        const { actions } = await checkoutSdk.loadActions();
-        const err = await actions.confirm();
-        if (err) {
-          onError(err.message ?? 'Payment failed');
-          setSubmitting(false);
-          return;
+        type ConfirmResult = { message?: string } | null;
+        type CheckoutConfirm = () => Promise<ConfirmResult>;
+        const confirmFn: CheckoutConfirm | undefined =
+          typeof (checkout as { confirm?: unknown }).confirm === 'function'
+            ? (checkout as { confirm: CheckoutConfirm }).confirm
+            : undefined;
+        if (!confirmFn) {
+          const c = checkout as unknown as {
+            loadActions?: () => Promise<{ actions: { confirm: CheckoutConfirm } }>;
+          };
+          if (typeof c.loadActions === 'function') {
+            const { actions } = await c.loadActions();
+            const err = await actions.confirm();
+            if (err) {
+              onError(err.message ?? 'Payment failed');
+              setSubmitting(false);
+              return;
+            }
+          } else {
+            onError('Checkout confirm is not available. Please refresh and try again.');
+            setSubmitting(false);
+            return;
+          }
+        } else {
+          const err = await confirmFn();
+          if (err) {
+            onError(err.message ?? 'Payment failed');
+            setSubmitting(false);
+            return;
+          }
         }
         const sessionId = (checkout as { id?: string }).id;
         if (sessionId) {
