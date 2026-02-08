@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { users, accounts, customers, invites, customerMembers } from '@stereos/shared/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
-import { sendInviteEmail } from '../lib/email.js';
+import { sendEmailViaResendFetch, INVITE_EMAIL_HTML } from '../lib/resend-fetch.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -75,16 +75,32 @@ router.post('/invites', requireAdmin, zValidator('json', inviteCreateSchema), as
     .returning();
 
   // Invite link must point to the frontend (web app), not the API
-  const frontendUrl = process.env.FRONTEND_URL || process.env.TRUSTED_ORIGINS?.split(',')?.[0]?.trim() || 'http://localhost:5173';
+  const env = (c.env as any) || {};
+  const frontendUrl = env.FRONTEND_URL || env.TRUSTED_ORIGINS?.split(',')?.[0]?.trim() || 'http://localhost:5173';
   const inviteUrl = `${frontendUrl.replace(/\/$/, '')}/auth/accept-invite?token=${encodeURIComponent(token)}`;
   const inviterName = (await db.query.users.findFirst({ where: eq(users.id, adminUser!.id), columns: { name: true } }))?.name || 'A teammate';
 
-  try {
-    await sendInviteEmail(email, inviteUrl, inviterName, customer.company_name || 'the workspace');
-  } catch (err) {
-    console.error('[Invites] Email send failed, cleaning up invite record', err);
-    await db.delete(invites).where(eq(invites.id, invite.id));
-    return c.json({ error: 'Failed to send invite email' }, 500);
+  const apiKey = (c.env as any)?.RESEND_API_KEY as string | undefined;
+  const fromEmail = (c.env as any)?.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  if (!apiKey) {
+    console.warn('[Invites] RESEND_API_KEY not set; skipping invite email to', email);
+  } else {
+    try {
+      const result = await sendEmailViaResendFetch({
+        apiKey,
+        from: fromEmail,
+        to: email,
+        subject: `You're invited to ${customer.company_name || 'the workspace'} on STEREOS`,
+        html: INVITE_EMAIL_HTML(inviteUrl, inviterName, customer.company_name || 'the workspace'),
+      });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+    } catch (err) {
+      console.error('[Invites] Email send failed, cleaning up invite record', err);
+      await db.delete(invites).where(eq(invites.id, invite.id));
+      return c.json({ error: 'Failed to send invite email' }, 500);
+    }
   }
 
   return c.json({ invite: { id: invite.id, email: invite.email, expires_at: invite.expires_at } }, 201);
