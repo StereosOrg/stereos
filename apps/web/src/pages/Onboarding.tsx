@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 import { StereosLogo } from '../components/StereosLogo';
@@ -22,6 +22,7 @@ export function Onboarding() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isMember, setIsMember] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -30,6 +31,26 @@ export function Onboarding() {
     companyName: '',
     billingEmail: '',
   });
+
+  // Fetch onboarding status to pre-fill company info for invited members
+  useEffect(() => {
+    fetch(`${API_BASE}/v1/onboarding/status`, {
+      credentials: 'include',
+      headers: getAuthHeaders(),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isMember && data.customer) {
+          setIsMember(true);
+          setFormData((prev) => ({
+            ...prev,
+            companyName: data.customer.company_name || '',
+            billingEmail: data.customer.billing_email || '',
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +74,12 @@ export function Onboarding() {
       }
 
       await response.json();
-      // Always go to start-trial embedded checkout (no payment links)
+      // Invited members skip payment setup — go to dashboard or pending page
+      if (isMember) {
+        navigate('/', { replace: true });
+        return;
+      }
+      // Workspace owners proceed to payment setup
       navigate('/onboarding/start-trial');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -272,7 +298,7 @@ export function Onboarding() {
                   Company Information
                 </h2>
                 <p style={{ color: '#666', marginBottom: '32px' }}>
-                  Set up your organization
+                  {isMember ? 'Your organization details' : 'Set up your organization'}
                 </p>
 
                 <div style={{ marginBottom: '20px' }}>
@@ -294,7 +320,9 @@ export function Onboarding() {
                       setFormData({ ...formData, companyName: e.target.value })
                     }
                     required
+                    readOnly={isMember}
                     placeholder="Acme Inc"
+                    style={isMember ? { background: '#f5f5f5', color: '#888', cursor: 'not-allowed' } : undefined}
                   />
                 </div>
 
@@ -317,7 +345,9 @@ export function Onboarding() {
                       setFormData({ ...formData, billingEmail: e.target.value })
                     }
                     required
+                    readOnly={isMember}
                     placeholder="billing@company.com"
+                    style={isMember ? { background: '#f5f5f5', color: '#888', cursor: 'not-allowed' } : undefined}
                   />
                 </div>
 
@@ -337,7 +367,7 @@ export function Onboarding() {
                     className="btn btn-primary"
                     style={{ flex: 2 }}
                   >
-                    {loading ? 'Creating Account...' : 'Continue to Payment'}
+                    {loading ? 'Setting up...' : isMember ? 'Complete Setup' : 'Continue to Payment'}
                     {!loading && <ArrowRight size={18} />}
                   </button>
                 </div>

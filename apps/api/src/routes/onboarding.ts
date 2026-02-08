@@ -41,6 +41,7 @@ router.get('/onboarding/status', async (c) => {
       needsOnboarding: !customer || !onboardingDone,
       needsPayment: !customer || !customer.payment_info_provided,
       isAdmin: user.role === 'admin',
+      isMember: !!member,
       user: {
         id: user.id,
         email: user.email,
@@ -50,6 +51,7 @@ router.get('/onboarding/status', async (c) => {
       },
       customer: customer ? {
         company_name: customer.company_name,
+        billing_email: customer.billing_email,
         onboarding_completed: customer.onboarding_completed,
         payment_info_provided: customer.payment_info_provided,
       } : null,
