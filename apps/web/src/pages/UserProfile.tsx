@@ -160,8 +160,8 @@ export function UserProfile() {
             style={{
               width: '80px',
               height: '80px',
-              borderRadius: '12px',
-              background: 'var(--dark)',
+              borderRadius: '50%',
+              background: userData.user.image ? 'transparent' : 'var(--dark)',
               border: '3px solid var(--border-color)',
               boxShadow: '4px 4px 0 var(--border-color)',
               display: 'flex',
@@ -170,9 +170,19 @@ export function UserProfile() {
               fontSize: '32px',
               fontWeight: 700,
               color: 'white',
+              overflow: 'hidden',
+              flexShrink: 0,
             }}
           >
-            {userData.user.name?.charAt(0) || userData.user.email.charAt(0).toUpperCase()}
+            {userData.user.image ? (
+              <img
+                src={userData.user.image}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              userData.user.name?.charAt(0) || userData.user.email.charAt(0).toUpperCase()
+            )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 className="heading-1" style={{ marginBottom: '8px', fontSize: '32px' }}>

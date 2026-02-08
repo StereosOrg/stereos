@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Activity, GitCommit, Users, Zap } from 'lucide-react';
+import { Activity, GitCommit, Users, Zap, Terminal } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon } from '../components/ToolIcon';
 
@@ -222,24 +222,35 @@ export function Dashboard() {
             </div>
           </div>
 
-          <div className="code-block">
-            <div className="code-header">
-              <span className="code-dot code-dot-red" />
-              <span className="code-dot code-dot-yellow" />
-              <span className="code-dot code-dot-green" />
-              <span style={{ marginLeft: '8px', color: '#888', fontSize: '13px' }}>
-                example.ts
-              </span>
+          <div className="card card-cream">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  background: 'var(--dark)',
+                  border: '3px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '4px 4px 0 var(--border-color)',
+                }}
+              >
+                <Terminal size={22} color="white" />
+              </div>
+              <h2 className="heading-3" style={{ margin: 0 }}>Connect the VS Code Extension</h2>
             </div>
-            <div className="code-content">
-              <pre>{`import { Stereos } from '@stereos/sdk'
-
-const result = await Stereos.track({
-  actor: 'cursor-v1',
-  intent: 'refactor auth',
-  files: ['src/auth.ts']
-})`}</pre>
-            </div>
+            <p style={{ color: '#555', marginBottom: '20px', lineHeight: 1.5 }}>
+              Install the Stereos extension in VS Code to track provenance as you code. One click creates a token and opens the extension to finish setup.
+            </p>
+            <Link
+              to="/settings"
+              className="btn btn-primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Terminal size={18} />
+              Connect in Settings
+            </Link>
           </div>
         </div>
       </div>

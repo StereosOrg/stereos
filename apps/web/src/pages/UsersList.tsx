@@ -257,8 +257,8 @@ export function UsersList() {
                       style={{
                         width: '44px',
                         height: '44px',
-                        borderRadius: '8px',
-                        background: 'var(--dark)',
+                        borderRadius: '50%',
+                        background: user.image ? 'transparent' : 'var(--dark)',
                         border: '2px solid var(--border-color)',
                         display: 'flex',
                         alignItems: 'center',
@@ -266,9 +266,19 @@ export function UsersList() {
                         fontSize: '18px',
                         fontWeight: 700,
                         color: 'white',
+                        overflow: 'hidden',
+                        flexShrink: 0,
                       }}
                     >
-                      {user.name?.charAt(0) || user.email.charAt(0).toUpperCase()}
+                      {user.image ? (
+                        <img
+                          src={user.image}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        user.name?.charAt(0) || user.email.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div>
                       <p style={{ fontWeight: 600, margin: 0 }}>
