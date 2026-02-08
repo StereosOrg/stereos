@@ -155,25 +155,19 @@ export async function createEmbeddedCheckoutSession(
     return null;
   }
   try {
-    const session = await client.checkout.sessions.create(
-      {
-        mode: 'subscription',
-        ui_mode: 'custom' as const,
-        return_url: returnUrl,
-        customer: stripeCustomerId,
-        metadata: { customer_id: customerId },
-        line_items: [
-          {
-            price: START_TRIAL_PRICE_ID,
-          },
-        ],
-        subscription_data: {
-          metadata: {
-            customer_id: customerId,
-          },
-        },
-      } as Parameters<Stripe['checkout']['sessions']['create']>[0]
-    );
+    // Request must use Basil API version so Stripe accepts ui_mode: 'custom' (required for initCheckout on the client).
+    const createParams = {
+      mode: 'subscription',
+      ui_mode: 'custom',
+      return_url: returnUrl,
+      customer: stripeCustomerId,
+      metadata: { customer_id: customerId },
+      line_items: [{ price: START_TRIAL_PRICE_ID }],
+      subscription_data: { metadata: { customer_id: customerId } },
+    } as unknown as Stripe.Checkout.SessionCreateParams;
+    const session = await client.checkout.sessions.create(createParams, {
+      apiVersion: '2025-03-31.basil',
+    });
     return session.client_secret ? { clientSecret: session.client_secret } : null;
   } catch (error) {
     console.error('Failed to create embedded checkout session:', error);
