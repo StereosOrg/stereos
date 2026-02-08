@@ -28,14 +28,23 @@ type Env = {
   GOOGLE_CLIENT_SECRET?: string;
 };
 
+function normalizeOrigin(o: string): string {
+  const t = o.trim();
+  if (!t) return t;
+  if (!/^https?:\/\//i.test(t)) return `https://${t}`;
+  return t;
+}
+
 function getAllowedOrigin(c: { req: { header: (name: string) => string | undefined }; env: Env }): string {
-  const origin = c.req.header('Origin') ?? '';
+  const origin = (c.req.header('Origin') ?? '').trim();
   const allowed = (c.env.TRUSTED_ORIGINS ?? c.env.BASE_URL ?? '')
     .split(',')
-    .map((o: string) => o.trim())
+    .map((o: string) => normalizeOrigin(o))
     .filter(Boolean);
   if (allowed.length === 0) return '*';
-  return allowed.includes(origin) ? origin : allowed[0];
+  const normalized = normalizeOrigin(origin);
+  const isAllowed = origin && allowed.some((a) => a === normalized || a === origin);
+  return isAllowed ? origin : allowed[0];
 }
 
 function addCorsToResponse(c: { req: { header: (name: string) => string | undefined }; env: Env; res: Response }, res: Response): Response {
@@ -53,9 +62,15 @@ const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 app.use('*', logger());
 // Run first so we run last: after next() we add CORS to any response that's missing it (e.g. auth returns raw Response).
+// If next() throws, return 500 with CORS so the browser can read the error.
 app.use('*', async (c, next) => {
-  await next();
-  c.res = addCorsToResponse(c, c.res);
+  try {
+    await next();
+    c.res = addCorsToResponse(c, c.res);
+  } catch (err) {
+    console.error('[Worker CORS wrap]', err);
+    c.res = addCorsToResponse(c, c.json({ error: 'Internal Server Error' }, 500));
+  }
 });
 app.use('*', cors({
   origin: (origin, c) => getAllowedOrigin(c),
@@ -126,5 +141,42 @@ app.onError((err, c) => {
   return addCorsToResponse(c, res);
 });
 
-// Export the handler for Cloudflare Workers
-export default app;
+// Wrap so any uncaught rejection returns a response with CORS (browser can read it).
+function corsOriginFromRequest(req: Request, env: Env): string {
+  const origin = (req.headers.get('Origin') ?? '').trim();
+  const allowed = (env.TRUSTED_ORIGINS ?? env.BASE_URL ?? '')
+    .split(',')
+    .map((o: string) => normalizeOrigin(o))
+    .filter(Boolean);
+  if (allowed.length === 0) return '*';
+  const normalized = normalizeOrigin(origin);
+  const isAllowed = origin && allowed.some((a) => a === normalized || a === origin);
+  return isAllowed ? origin : allowed[0];
+}
+
+function addCorsToResponseStandalone(req: Request, env: Env, res: Response): Response {
+  if (res.headers.get('Access-Control-Allow-Origin')) return res;
+  const acao = corsOriginFromRequest(req, env);
+  const h = new Headers(res.headers);
+  h.set('Access-Control-Allow-Origin', acao);
+  h.set('Access-Control-Allow-Credentials', 'true');
+  h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: unknown): Promise<Response> {
+    try {
+      const res = await app.fetch(request, env, ctx as Parameters<typeof app.fetch>[2]);
+      return addCorsToResponseStandalone(request, env, res);
+    } catch (err) {
+      console.error('[Worker fetch error]', err);
+      const res = new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return addCorsToResponseStandalone(request, env, res);
+    }
+  },
+};
