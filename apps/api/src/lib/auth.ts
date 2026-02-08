@@ -2,12 +2,14 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import type { Database } from '@stereos/shared/db';
 import * as schema from '@stereos/shared/schema';
-import { sendVerificationEmail as sendVerificationEmailViaResend } from './email.js';
 
 export interface AuthEnv {
   baseURL?: string;
   basePath?: string;
   trustedOrigins?: string;
+  secret?: string;
+  /** Override for Workers where Resend may not load; if set, used instead of default email sender */
+  sendVerificationEmail?: (params: { user: { email: string }; url: string }) => void | Promise<void>;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
@@ -19,6 +21,7 @@ function getEnv(): AuthEnv {
     return {
       baseURL: process.env.BETTER_AUTH_URL || process.env.BASE_URL || 'http://localhost:3000',
       trustedOrigins: process.env.TRUSTED_ORIGINS,
+      secret: process.env.BETTER_AUTH_SECRET,
       GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
       GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
       GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
@@ -32,6 +35,7 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
   const env = { ...getEnv(), ...envOverrides };
   const trusted = env.trustedOrigins?.split(',').map((o) => o.trim()).filter(Boolean) || ['http://localhost:5173'];
   return betterAuth({
+    secret: env.secret,
     database: drizzleAdapter(db, {
       provider: 'pg',
       schema,
@@ -52,10 +56,18 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
     baseURL: env.baseURL || 'http://localhost:3000',
     basePath: '/v1/auth',
     trustedOrigins: trusted,
-    emailVerification: {
-      sendVerificationEmail: async ({ user, url }) => {
-        void sendVerificationEmailViaResend(user.email, url);
+    advanced: {
+      useSecureCookies: true,
+      defaultCookieAttributes: {
+        sameSite: 'none',
+        secure: true,
       },
+    },
+    emailVerification: {
+      sendVerificationEmail: env.sendVerificationEmail ?? (async ({ user, url }) => {
+        const { sendVerificationEmail: send } = await import('./email.js');
+        void send(user.email, url);
+      }),
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
     },
