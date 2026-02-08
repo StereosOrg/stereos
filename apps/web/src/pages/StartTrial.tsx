@@ -366,16 +366,32 @@ function CheckoutForm({ onError }: { onError: (msg: string) => void }) {
             credentials: 'include',
             body: JSON.stringify({ session_id: sessionId }),
           });
-          const data = await res.json();
-          if (data.error) {
-            onError(data.error);
+          const text = await res.text();
+          let body: { error?: string; message?: string } = {};
+          try {
+            body = text ? JSON.parse(text) : {};
+          } catch {
+            body = { error: res.ok ? undefined : text || `Request failed (${res.status})` };
+          }
+          if (!res.ok) {
+            onError(typeof body?.error === 'string' ? body.error : body?.message ?? `Request failed (${res.status})`);
+            setSubmitting(false);
+            return;
+          }
+          if (body.error) {
+            onError(body.error);
             setSubmitting(false);
             return;
           }
         }
         navigate('/', { replace: true });
-      } catch {
-        onError('Something went wrong. Please try again.');
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : typeof e === 'string' ? e : 'Something went wrong. Please try again.';
+        onError(message);
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('Start-trial submit error:', e);
+        }
       } finally {
         setSubmitting(false);
       }
