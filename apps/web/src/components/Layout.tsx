@@ -1,4 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Home,
   GitBranch,
@@ -7,12 +8,23 @@ import {
   Settings,
   LogOut,
 } from 'lucide-react';
-import { BEARER_TOKEN_KEY } from '../lib/api';
+import { API_BASE, BEARER_TOKEN_KEY, getAuthHeaders } from '../lib/api';
 import { authClient } from '../lib/auth-client';
 
 export function Layout() {
   const location = useLocation();
   const { data: session } = authClient.useSession();
+  const hasToken = typeof window !== 'undefined' && !!localStorage.getItem(BEARER_TOKEN_KEY);
+  const { data: me } = useQuery<{ user: { id: string; email: string; name: string | null; image: string | null } }>({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Not authenticated');
+      return res.json();
+    },
+    enabled: hasToken,
+  });
+  const profileUser = session?.user ?? me?.user;
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
@@ -92,7 +104,7 @@ export function Layout() {
         </nav>
 
         <div style={{ marginTop: 'auto', paddingTop: '40px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {session?.user && (
+          {profileUser && (
             <div
               className="sidebar-footer"
               style={{
@@ -142,7 +154,7 @@ export function Layout() {
 
       {/* Main Content */}
       <main className="main">
-        {session?.user && (
+        {profileUser && (
           <Link
             to="/settings"
             className="profile-widget"
@@ -186,24 +198,24 @@ export function Layout() {
                 flexShrink: 0,
               }}
             >
-              {session.user.image ? (
+              {profileUser.image ? (
                 <img
-                  src={session.user.image}
+                  src={profileUser.image}
                   alt=""
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
                 <span style={{ fontSize: '14px', fontWeight: 800, color: 'white' }}>
-                  {(session.user.name ?? session.user.email ?? '?').charAt(0).toUpperCase()}
+                  {(profileUser.name ?? profileUser.email ?? '?').charAt(0).toUpperCase()}
                 </span>
               )}
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '14px', fontWeight: 700, lineHeight: 1.2 }}>
-                {session.user.name || 'Account'}
+                {profileUser.name || 'Account'}
               </div>
               <div style={{ fontSize: '12px', color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
-                {session.user.email}
+                {profileUser.email}
               </div>
             </div>
           </Link>
