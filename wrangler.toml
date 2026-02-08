@@ -9,9 +9,9 @@ compatibility_flags = ["nodejs_compat"]
 # Your Worker URL (used by Better Auth callbacks)
 BASE_URL = "https://stereos.jdbohrman.workers.dev"
 # Comma-separated origins for CORS
-TRUSTED_ORIGINS = "https://stereos.netlify.app"
+TRUSTED_ORIGINS = "https://stereos-web.vercel.app"
 # Frontend URL used in magic link emails (link goes here, not API). Must match your app origin.
-FRONTEND_URL = "https://stereos.netlify.app"
+FRONTEND_URL = "https://stereos-web.vercel.app"
 
 # Secrets: npx wrangler secret put <NAME>
 # - DATABASE_URL (Neon Postgres URL)

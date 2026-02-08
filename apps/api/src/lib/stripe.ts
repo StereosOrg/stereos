@@ -131,7 +131,10 @@ export async function createEmbeddedCheckoutSession(
         { price: USAGE_PRICE_ID },
         { price: 'price_1SyaJ0FRJliLrxglp9L6uTWT', quantity: 1 },
       ],
-      subscription_data: { metadata: { customer_id: customerId } },
+      subscription_data: {
+        trial_period_days: 14,
+        metadata: { customer_id: customerId },
+      },
     } as unknown as Stripe.Checkout.SessionCreateParams;
     const session = await client.checkout.sessions.create(createParams, {
       apiVersion: '2025-03-31.basil',
@@ -158,8 +161,9 @@ export async function confirmCheckoutSession(
     const session = await client.checkout.sessions.retrieve(sessionId, {
       expand: ['subscription'],
     });
-    if (session.payment_status !== 'paid' && session.status !== 'complete') {
-      return { success: false, error: 'Session not paid' };
+    // Accept complete sessions: paid now, or trialing (14-day trial — no charge yet)
+    if (session.status !== 'complete') {
+      return { success: false, error: 'Session not complete' };
     }
     const customerId = session.metadata?.customer_id as string | undefined;
     if (!customerId) {
