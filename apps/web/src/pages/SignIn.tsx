@@ -1,51 +1,64 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { AuthLayout } from '../components/AuthLayout';
 import { getCallbackURL } from '../lib/api';
 import { authClient } from '../lib/auth-client';
 
+
 export function SignIn() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
 
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
 
-  const handleEmailSignIn = async (e: React.FormEvent) => {
+  const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const { data, error: err } = await authClient.signIn.email({
+    const { error: err } = await authClient.signIn.magicLink({
       email,
-      password,
       callbackURL: getCallbackURL(redirect),
     });
     setLoading(false);
     if (err) {
-      const msg = err.message || '';
-      const needsVerification = err.status === 403 || /verify|verification/i.test(msg);
-      setError(needsVerification ? 'Please verify your email first. Check your inbox for the verification link.' : msg || 'Invalid email or password');
+      setError(err.message || 'Something went wrong');
       return;
     }
-    if (data?.url) {
-      window.location.href = data.url;
-    } else {
-      navigate(redirect, { replace: true });
-    }
+    setSent(true);
   };
 
-  const handleSocialSignIn = (provider: 'github' | 'google') => {
-    authClient.signIn.social({
-      provider,
-      callbackURL: getCallbackURL(redirect),
-    });
-  };
+
+  if (sent) {
+    return (
+      <AuthLayout title="Check your email" subtitle="We sent you a sign-in link">
+        <div className="card" style={{ background: 'var(--bg-white)' }}>
+          <p style={{ fontSize: '15px', lineHeight: 1.6, marginBottom: '16px' }}>
+            We sent a magic link to <strong>{email}</strong>. Click the link in your email to sign in.
+          </p>
+          <p style={{ fontSize: '13px', color: '#666', marginBottom: '20px' }}>
+            The link expires in 10 minutes. Check your spam folder if you don't see it.
+          </p>
+          <button
+            type="button"
+            className="btn"
+            style={{ width: '100%' }}
+            onClick={() => {
+              setSent(false);
+              setError('');
+            }}
+          >
+            Try a different email
+          </button>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
-    <AuthLayout title="Sign in" subtitle="Welcome back to STEREOS">
+    <AuthLayout title="Sign in" subtitle="Welcome to STEREOS">
       <div className="card" style={{ background: 'var(--bg-white)' }}>
         {error && (
           <div
@@ -63,8 +76,8 @@ export function SignIn() {
           </div>
         )}
 
-        <form onSubmit={handleEmailSignIn}>
-          <div style={{ marginBottom: '16px' }}>
+        <form onSubmit={handleMagicLink}>
+          <div style={{ marginBottom: '20px' }}>
             <label
               style={{
                 display: 'block',
@@ -85,98 +98,16 @@ export function SignIn() {
               autoComplete="email"
             />
           </div>
-          <div style={{ marginBottom: '20px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: 600,
-                marginBottom: '8px',
-              }}
-            >
-              Password
-            </label>
-            <input
-              type="password"
-              className="input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
-          </div>
           <button
             type="submit"
             disabled={loading}
             className="btn btn-primary"
             style={{ width: '100%', marginBottom: '20px' }}
           >
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading ? 'Sending link...' : 'Send magic link'}
           </button>
         </form>
-
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            marginBottom: '20px',
-          }}
-        >
-          <div
-            style={{
-              flex: 1,
-              height: '2px',
-              background: 'var(--border-color)',
-            }}
-          />
-          <span style={{ fontSize: '13px', color: '#666' }}>or</span>
-          <div
-            style={{
-              flex: 1,
-              height: '2px',
-              background: 'var(--border-color)',
-            }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <button
-            type="button"
-            className="btn"
-            style={{ width: '100%' }}
-            onClick={() => handleSocialSignIn('github')}
-          >
-            Continue with GitHub
-          </button>
-          <button
-            type="button"
-            className="btn"
-            style={{ width: '100%' }}
-            onClick={() => handleSocialSignIn('google')}
-          >
-            Continue with Google
-          </button>
-        </div>
       </div>
-
-      <p
-        style={{
-          textAlign: 'center',
-          color: '#555',
-          fontSize: '14px',
-          marginTop: '24px',
-        }}
-      >
-        Don't have an account?{' '}
-        <Link
-          to={`/auth/sign-up${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}
-          style={{ color: 'var(--dark)', fontWeight: 600 }}
-        >
-          Sign up
-        </Link>
-      </p>
     </AuthLayout>
   );
 }

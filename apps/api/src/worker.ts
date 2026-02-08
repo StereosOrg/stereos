@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { createDb } from '@stereos/shared/db';
 import { createAuth } from './lib/auth.js';
-import { sendEmailViaResendFetch, VERIFICATION_EMAIL_HTML } from './lib/resend-fetch.js';
+import { sendEmailViaResendFetch, VERIFICATION_EMAIL_HTML, MAGIC_LINK_EMAIL_HTML } from './lib/resend-fetch.js';
 import type { AppVariables } from './types/app.js';
 import type { AuthType } from './lib/auth.js';
 import type { Database } from '@stereos/shared/db';
@@ -63,6 +63,7 @@ function addCorsToResponse(c: { req: { header: (name: string) => string | undefi
   h.set('Access-Control-Allow-Credentials', 'true');
   h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  h.set('Access-Control-Expose-Headers', 'set-auth-token');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }
 
@@ -84,6 +85,7 @@ app.use('*', cors({
   origin: (origin, c) => getAllowedOrigin(c),
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowHeaders: ['Content-Type', 'Authorization'],
+  exposeHeaders: ['set-auth-token'],
   credentials: true,
 }));
 
@@ -118,6 +120,20 @@ app.use('*', async (c, next) => {
             if (result.error) console.error('[Auth] Resend verification email failed:', result.error);
           } else {
             console.warn('[Auth] RESEND_API_KEY not set; verification link for', user.email, ':', url);
+          }
+        },
+        sendMagicLinkEmail: async ({ email, url }) => {
+          if (apiKey) {
+            const result = await sendEmailViaResendFetch({
+              apiKey,
+              from,
+              to: email,
+              subject: 'Sign in to STEREOS',
+              html: MAGIC_LINK_EMAIL_HTML(url),
+            });
+            if (result.error) console.error('[Auth] Resend magic link email failed:', result.error);
+          } else {
+            console.warn('[Auth] RESEND_API_KEY not set; magic link for', email, ':', url);
           }
         },
         GITHUB_CLIENT_ID: c.env.GITHUB_CLIENT_ID,
@@ -185,6 +201,7 @@ function addCorsToResponseStandalone(req: Request, env: Env, res: Response): Res
   h.set('Access-Control-Allow-Credentials', 'true');
   h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  h.set('Access-Control-Expose-Headers', 'set-auth-token');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }
 

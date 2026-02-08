@@ -127,7 +127,10 @@ export async function createEmbeddedCheckoutSession(
       return_url: returnUrl,
       customer: stripeCustomerId,
       metadata: { customer_id: customerId },
-      line_items: [{ price: USAGE_PRICE_ID }],
+      line_items: [
+        { price: USAGE_PRICE_ID },
+        { price: 'price_1SyXeyFLodImBHZEmzi5Z2qr' },
+      ],
       subscription_data: { metadata: { customer_id: customerId } },
     } as unknown as Stripe.Checkout.SessionCreateParams;
     const session = await client.checkout.sessions.create(createParams, {

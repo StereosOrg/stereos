@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../components/AuthLayout';
-import { API_BASE } from '../lib/api';
+import { API_BASE, getCallbackURL } from '../lib/api';
 import { authClient } from '../lib/auth-client';
 import { MailCheck } from 'lucide-react';
 
@@ -53,7 +53,7 @@ export function AcceptInvite() {
       const { error: signInErr } = await authClient.signIn.email({
         email: email.trim(),
         password,
-        callbackURL: '/onboarding',
+        callbackURL: getCallbackURL('/onboarding'),
       });
       if (signInErr) {
         setStatus('success');

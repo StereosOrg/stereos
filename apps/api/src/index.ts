@@ -30,6 +30,7 @@ app.use('*', cors({
   origin: process.env.TRUSTED_ORIGINS?.split(',')?.map((o) => o.trim()) || ['http://localhost:5173'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowHeaders: ['Content-Type', 'Authorization'],
+  exposeHeaders: ['set-auth-token'],
   credentials: true,
 }));
 

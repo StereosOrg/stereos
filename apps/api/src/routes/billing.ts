@@ -68,7 +68,7 @@ router.post('/webhooks/stripe', async (c) => {
   }
 
   try {
-    const event = stripeClient.webhooks.constructEvent(
+    const event = await stripeClient.webhooks.constructEventAsync(
       payload,
       signature,
       webhookSecret

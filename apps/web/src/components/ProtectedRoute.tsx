@@ -29,8 +29,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       headers: getAuthHeaders(),
     })
       .then((res) => {
-        if (res.status === 401 || res.redirected) {
-          // API redirected us to login
+        if (res.status === 401) {
           setStatus({
             loading: false,
             needsAuth: true,
@@ -45,9 +44,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
         if (data) {
           setStatus({
             loading: false,
-            needsAuth: data.needsAuth,
-            needsOnboarding: data.needsOnboarding,
-            needsPayment: data.needsPayment,
+            needsAuth: data.needsAuth ?? false,
+            needsOnboarding: data.needsOnboarding ?? false,
+            needsPayment: data.needsPayment ?? false,
             isAdmin: data.isAdmin,
           });
         }

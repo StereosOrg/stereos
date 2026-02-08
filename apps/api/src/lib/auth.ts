@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer } from 'better-auth/plugins';
+import { magicLink } from 'better-auth/plugins/magic-link';
 import { createAuthMiddleware } from 'better-auth/api';
 import type { Database } from '@stereos/shared/db';
 import * as schema from '@stereos/shared/schema';
@@ -12,6 +13,12 @@ export interface AuthEnv {
   secret?: string;
   /** Override for Workers where Resend may not load; if set, used instead of default email sender */
   sendVerificationEmail?: (params: { user: { email: string }; url: string }) => void | Promise<void>;
+  /** Send magic link email (Workers: pass resend-fetch based sender) */
+  sendMagicLinkEmail?: (params: { email: string; url: string; token: string }) => void | Promise<void>;
+  /** Resend API key for magic link emails in Workers */
+  RESEND_API_KEY?: string;
+  /** Resend from address */
+  RESEND_FROM_EMAIL?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
@@ -36,9 +43,25 @@ function getEnv(): AuthEnv {
 export function createAuth(db: Database, envOverrides?: AuthEnv) {
   const env = { ...getEnv(), ...envOverrides };
   const trusted = env.trustedOrigins?.split(',').map((o) => o.trim()).filter(Boolean) || ['http://localhost:5173'];
+  // Build the magic link sender. Workers pass a custom callback; Node falls back to email.ts.
+  const sendMagicLinkFn = env.sendMagicLinkEmail
+    ? async (data: { email: string; url: string; token: string }) => {
+        await env.sendMagicLinkEmail!(data);
+      }
+    : async (data: { email: string; url: string; token: string }) => {
+        const { sendMagicLinkEmail: send } = await import('./email.js');
+        await send(data.email, data.url);
+      };
+
   return betterAuth({
     secret: env.secret,
-    plugins: [bearer()],
+    plugins: [
+      bearer(),
+      magicLink({
+        sendMagicLink: sendMagicLinkFn,
+        expiresIn: 600, // 10 minutes
+      }),
+    ],
     database: drizzleAdapter(db, {
       provider: 'pg',
       schema,
@@ -66,47 +89,8 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
         secure: true,
       },
     },
-    hooks: {
-      after: createAuthMiddleware(async (ctx) => {
-        // After email verification: redirect to frontend WITH session token in URL so cross-origin
-        // (e.g. Netlify → Workers) can store it and use Bearer auth when cookies are blocked.
-        if (ctx.path !== '/verify-email') return;
-        const newSession = ctx.context.newSession as { session?: { token?: string }; token?: string; user?: unknown } | undefined;
-        const token = newSession?.session?.token ?? newSession?.token;
-        const callbackURL = ctx.query?.callbackURL as string | undefined;
-        if (token && callbackURL) {
-          const url = new URL(callbackURL);
-          url.searchParams.set('session_token', token);
-          throw ctx.redirect(url.toString());
-        }
-      }),
-    },
-    emailVerification: {
-      sendVerificationEmail: env.sendVerificationEmail
-        ? async (data: { user: { email: string }; url: string }) => {
-            await env.sendVerificationEmail!({ user: data.user, url: data.url });
-          }
-        : async (data: { user: { email: string }; url: string }) => {
-            const { sendVerificationEmail: send } = await import('./email.js');
-            await send(data.user.email, data.url);
-          },
-      sendOnSignUp: true,
-      autoSignInAfterVerification: true,
-    },
     emailAndPassword: {
-      enabled: true,
-      autoSignIn: true,
-      requireEmailVerification: true,
-    },
-    socialProviders: {
-      github: {
-        clientId: env.GITHUB_CLIENT_ID || '',
-        clientSecret: env.GITHUB_CLIENT_SECRET || '',
-      },
-      google: {
-        clientId: env.GOOGLE_CLIENT_ID || '',
-        clientSecret: env.GOOGLE_CLIENT_SECRET || '',
-      },
+      enabled: false,
     },
   });
 }

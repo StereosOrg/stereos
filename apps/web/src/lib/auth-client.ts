@@ -1,4 +1,5 @@
 import { createAuthClient } from 'better-auth/react';
+import { magicLinkClient } from 'better-auth/client/plugins';
 import { API_BASE, BEARER_TOKEN_KEY } from './api';
 
 const authBase = API_BASE
@@ -9,6 +10,7 @@ const authBase = API_BASE
 
 export const authClient = createAuthClient({
   baseURL: authBase || undefined,
+  plugins: [magicLinkClient()],
   fetchOptions: {
     credentials: 'include',
     // Cross-origin fallback when cookies are blocked: use Bearer token
