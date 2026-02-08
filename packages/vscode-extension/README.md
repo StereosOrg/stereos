@@ -1,121 +1,112 @@
-# STEREOS VS Code Extension
+# STEREOS for VS Code
 
-Track AI-generated code changes directly from VS Code/Cursor.
+**Track AI-generated code provenance directly from VS Code and Cursor.**
 
-## Features
+STEREOS records every AI-assisted edit — which tool made the change, what model was used, which files were touched, and why — so your team has a complete audit trail of AI contributions to your codebase.
 
-✅ **Language Model Tool** - When the agent (Copilot/Cursor) calls `#recordProvenance` after making edits, STEREOS records provenance with edit-level attribution  
-✅ **Automatic Tracking** - Tracks file saves, creates, and deletes (optional)  
-✅ **AI Tool Detection** - Auto-detects Cursor, Copilot, Cody, Continue, Supermaven, Codeium  
-✅ **Rich Context** - Captures git branch, commit, file line counts, session duration  
-✅ **Manual Tracking** - Right-click to add detailed context  
-✅ **Status Bar** - Visual confirmation when events are tracked  
+![Dashboard](resources/screenshot-dashboard.png)
 
-## Installation
+---
 
-1. Build the SDK first (from repo root or packages/sdk), then the extension:
-```bash
-cd packages/sdk && npm run build
-cd ../vscode-extension
-npm install
-npm run compile
-```
+## Quick Start
 
-2. Press F5 to run in debug mode, or package it:
-```bash
-npm install -g @vscode/vsce
-vsce package
-# Then install the .vsix file in VS Code: Extensions → ... → Install from VSIX
-```
+### 1. Install the Extension
 
-## Publishing to the Marketplace
+Search for **Stereos** in the VS Code / Cursor extension marketplace and click **Install**.
 
-1. **Create a publisher** (one-time): Go to [Visual Studio Marketplace](https://marketplace.visualstudio.com/) → sign in with Microsoft → **Publish extension** → create a publisher (e.g. `stereos`). The `package.json` already has `"publisher": "stereos"`; use that ID or update it to match your publisher.
+### 2. Connect Your Account
 
-2. **Get a Personal Access Token (PAT)**:
-   - [Azure DevOps](https://dev.azure.com) → User settings (top right) → **Personal access tokens**
-   - New token, scope **Custom defined** → **Marketplace** → **Manage** (read & publish)
-   - Copy the token (you won’t see it again).
+1. Open the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run **STEREOS: Connect Account** — this opens the STEREOS dashboard in your browser.
+2. Sign in (or create an account) on the dashboard.
+3. On the **Settings** page, click **Connect VS Code**. The extension receives your token automatically via a secure deep link — no copy-paste needed.
 
-3. **Login and publish** (from `packages/vscode-extension`):
-   ```bash
-   npm run compile
-   npx @vscode/vsce login stereos   # paste your PAT when prompted
-   npx @vscode/vsce publish
-   ```
-   Or with a `.vsix` first: `npx @vscode/vsce package` then `npx @vscode/vsce publish -p YOUR_PAT path/to/stereos-provenance-1.0.0.vsix`.
+![Settings — Connect VS Code and create API tokens](resources/screenshot-settings.png)
 
-4. **Bump version** before each publish: in `package.json` update `"version": "1.0.0"` (e.g. to `1.0.1`), then run `vsce publish` again.
+> **Fallback:** You can also run **STEREOS: Configure API Token** from the command palette to paste a token manually, or set `stereos.apiToken` in VS Code settings.
 
-5. **Display name and icon**: The Extensions sidebar shows **Stereos** (from `displayName`) and the icon from `resources/extension-icon.svg` when the extension is published. When installing from a local `.vsix`, some builds may show the extension ID (`stereos.stereos-provenance`) until you publish to the Marketplace.
+### 3. Start Coding
 
-## Configuration
+That's it. STEREOS begins tracking automatically. Every time an AI tool edits your code, a provenance event is recorded with full context.
 
-Set your STEREOS API token:
-- Run command: `STEREOS: Configure API Token`
-- **Recommended:** Use **Connect account** (sidebar or command palette) to open the dashboard; sign in, then click **Connect VS Code**. The extension receives the token via a secure link—no copy-paste.
-- Or set in settings: `stereos.apiToken`, or use **Configure API Token** to paste a token (stored in VS Code secret storage).
-
-Other settings:
-- `stereos.autoTrack` - Enable auto-tracking (default: true)
-- `stereos.debounceMs` - Debounce time in ms (default: 5000)
-- `stereos.actorId` - Actor identifier (default: vscode)
-
-## Data Captured
-
-The extension captures comprehensive event data:
-
-```typescript
-{
-  actor_id: "vscode",           // Your configured actor ID
-  tool: "cursor",               // Detected AI tool
-  model: "claude-3-sonnet",     // AI model (if detected)
-  intent: "Modified 3 files",   // Auto-generated or manual
-  files_written: ["src/auth.ts", "src/middleware.ts"],
-  repo: "my-project",
-  branch: "feature/auth",
-  commit: "abc123...",
-  metadata: {
-    repo_url: "https://github.com/user/repo",
-    file_count: 3,
-    created_count: 1,
-    modified_count: 2,
-    deleted_count: 0,
-    total_lines: 450,
-    session_duration_seconds: 3600,
-    vscode_version: "1.85.0",
-    workspace: "/path/to/project"
-  }
-}
-```
-
-## Commands
-
-- `STEREOS: Track Code Change` - Manually track with detailed context
-- `STEREOS: View Provenance` - Open dashboard in embedded webview
-- `STEREOS: Open Dashboard` - Open dashboard in browser (deep link)
-- `STEREOS: Open Event in Dashboard` - Open a specific event by ID in the dashboard
-- `STEREOS: Flush Pending Changes` - Immediately send pending changes
-- `STEREOS: Toggle Auto-Tracking` - Enable/disable auto-tracking
-- `STEREOS: Configure API Token` - Set your API token
-
-## Supported AI Tools
-
-- ✅ Cursor (with model detection)
-- ✅ GitHub Copilot
-- ✅ Sourcegraph Cody
-- ✅ Continue.dev
-- ✅ Supermaven
-- ✅ Codeium
-- ✅ VS Code (generic)
+---
 
 ## How It Works
 
-1. **Language Model Tool** (recommended): In agent chat, the model can call `#recordProvenance` with a summary and list of files changed. STEREOS sends a provenance event so you get accurate edit-level attribution. Requires VS Code 1.85+ with Copilot agent mode (or Cursor with compatible tool support).
-2. **File Watchers** (optional): Listen for create/modify/delete events, debounce (default: 5 seconds), then send a batch event. Tool is inferred from the editor (Cursor, Copilot, etc.).
-3. **Git Integration** captures branch, commit, and repo info for all events.
-4. **Manual** "Track Code Change" for one-off recording with full context.
+| Method | Description |
+|---|---|
+| **Language Model Tool** (recommended) | In agent chat, the model calls `#recordProvenance` after making edits. You get accurate, edit-level attribution with a summary of what changed. Requires VS Code 1.85+ with Copilot agent mode or Cursor. |
+| **Automatic File Tracking** | Watches for file creates, modifications, and deletes. Events are debounced (default: 5 seconds) and sent as a batch. The AI tool is inferred from your editor. |
+| **Manual Tracking** | Right-click a file or run **STEREOS: Track Code Change** from the command palette to record a one-off event with full context. |
 
-## No Webhooks Needed!
+All methods automatically capture **git branch**, **commit hash**, **repo info**, and **session duration**.
 
-Unlike other solutions, this extension captures events directly in the editor - no webhooks required from AI platforms.
+---
+
+## Supported AI Tools
+
+STEREOS auto-detects the AI tool in use:
+
+- Cursor (with model detection)
+- GitHub Copilot
+- Sourcegraph Cody
+- Continue.dev
+- Supermaven
+- Codeium
+
+---
+
+## The Dashboard
+
+### Provenance Overview
+
+See total events, linked commits, and active agents at a glance. Recent events appear on the home page with quick links to search or manage your team.
+
+![Dashboard home](resources/screenshot-dashboard.png)
+
+### Event Search
+
+Filter provenance events by actor, tool, intent, and date range to find exactly what you're looking for.
+
+![Events — search and filter provenance events](resources/screenshot-events.png)
+
+### User Profiles
+
+View per-user activity including total events, active days, favorite tools, monthly usage, and most modified files.
+
+![User profile with activity breakdown](resources/screenshot-user-profile.png)
+
+---
+
+## Commands
+
+| Command | Description |
+|---|---|
+| **STEREOS: Connect Account** | Open dashboard to link your account via deep link |
+| **STEREOS: Track Code Change** | Manually record a provenance event with detailed context |
+| **STEREOS: View Provenance** | Open the dashboard in an embedded webview |
+| **STEREOS: Open Dashboard** | Open the dashboard in your browser |
+| **STEREOS: Open Event in Dashboard** | Jump to a specific event by ID |
+| **STEREOS: Flush Pending Changes** | Immediately send any buffered events |
+| **STEREOS: Toggle Auto-Tracking** | Enable or disable automatic file tracking |
+| **STEREOS: Configure API Token** | Manually set your API token |
+
+---
+
+## Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `stereos.apiToken` | — | Your API token (set automatically via Connect Account) |
+| `stereos.autoTrack` | `true` | Enable automatic file-change tracking |
+| `stereos.debounceMs` | `5000` | Milliseconds to wait before batching file events |
+| `stereos.actorId` | `vscode` | Identifier for the actor in provenance events |
+
+---
+
+## API & CI/CD Integration
+
+STEREOS isn't limited to VS Code. You can send provenance events from any agent, script, or CI pipeline using the REST API. Create an API token on the **Settings** page of the dashboard, then POST events directly.
+
+![Settings — API tokens and ingestion](resources/screenshot-settings.png)
+
+See the [API documentation](https://stereos.dev/docs) for details.

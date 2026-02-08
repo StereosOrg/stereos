@@ -48,9 +48,40 @@ function computeDiffHash(repo, commit, files) {
     return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 const SECRET_KEY = 'stereos.apiToken';
+/** Inline API client: POST /v1/events (no @stereos/sdk dependency so packaging doesn't pull in workspace). */
+function createStereos(config) {
+    const baseUrl = config.baseUrl.replace(/\/$/, '');
+    const apiToken = config.apiToken?.trim();
+    return {
+        async track(payload) {
+            if (!apiToken)
+                return { success: false, error: 'API token is required' };
+            const body = {
+                event_type: 'agent_action',
+                actor_type: 'agent',
+                ...payload,
+                files_written: payload.files_written ?? [],
+            };
+            try {
+                const res = await fetch(`${baseUrl}/v1/events`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken}` },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    return { success: false, error: data.error || res.statusText || `HTTP ${res.status}` };
+                }
+                return { success: true, event_id: data.event_id };
+            }
+            catch (err) {
+                return { success: false, error: err instanceof Error ? err.message : String(err) };
+            }
+        },
+    };
+}
 async function activate(context) {
     console.log('STEREOS extension is now active');
-    const { createStereos } = await import('@stereos/sdk');
     const config = vscode.workspace.getConfiguration('stereos');
     const baseUrl = 'https://stereos.jdbohrman.workers.dev';
     const dashboardUrl = 'https://stereos.netlify.app';
@@ -475,11 +506,11 @@ async function activate(context) {
             vscode.window.showErrorMessage(`❌ Failed: ${result.error}`);
         }
     });
-    // Connect account: open dashboard so user can use "Connect VS Code" and get token via deep link.
+    // Connect account: open dashboard in browser; user signs in there and clicks "Connect VS Code" — token is delivered via deep link only (no iframe/auth in extension).
     const connectAccountCmd = vscode.commands.registerCommand('stereos.connectAccount', () => {
         const connectUrl = `${dashboardUrl}/settings?connect=vscode`;
         vscode.env.openExternal(vscode.Uri.parse(connectUrl));
-        vscode.window.showInformationMessage('STEREOS: Open the dashboard and click "Connect VS Code" to link this workspace (no manual token needed).');
+        vscode.window.showInformationMessage('Stereos: Sign in in your browser, then click "Connect VS Code" to link this workspace. The extension will receive your token via the link.');
     });
     // Configure command (manual token paste; also stored in secretStorage)
     const configureCmd = vscode.commands.registerCommand('stereos.configure', async () => {
@@ -504,12 +535,7 @@ async function activate(context) {
         refreshTree();
         vscode.window.showInformationMessage(`Stereos: Auto-tracking ${!current ? 'enabled' : 'disabled'}`);
     });
-    // View Provenance command (embedded dashboard)
-    const viewCmd = vscode.commands.registerCommand('stereos.viewProvenance', () => {
-        const panel = vscode.window.createWebviewPanel('stereosProvenance', 'Stereos', vscode.ViewColumn.One, { enableScripts: true });
-        panel.webview.html = getProvenanceHtml(dashboardUrl);
-    });
-    // Open Dashboard in browser (deep link to dashboard)
+    // Open Dashboard in browser
     const openDashboardCmd = vscode.commands.registerCommand('stereos.openDashboard', () => {
         vscode.env.openExternal(vscode.Uri.parse(dashboardUrl));
     });
@@ -563,14 +589,12 @@ async function activate(context) {
         getChildren() {
             if (!isConnected()) {
                 return [
-                    makeItem('Connect to Stereos', 'stereos.connectAccount', 'link', 'Sign in and link this workspace to track AI-assisted changes'),
-                    makeItem('Open Dashboard', 'stereos.openDashboard', 'link-external', 'Sign up or open the web dashboard'),
+                    makeItem('Connect to Stereos', 'stereos.connectAccount', 'link', 'Open the web app to sign in or sign up, then click Connect VS Code to link this workspace'),
                 ];
             }
             const autoTrackOn = config.get('autoTrack') ?? true;
             return [
                 makeItem('Open Dashboard', 'stereos.openDashboard', 'link-external'),
-                makeItem('View Provenance', 'stereos.viewProvenance', 'book'),
                 makeItem('Track Code Change', 'stereos.trackChange', 'edit'),
                 makeItem(autoTrackOn ? 'Toggle auto-tracking (on)' : 'Toggle auto-tracking (off)', 'stereos.toggleAutoTrack', autoTrackOn ? 'check' : 'circle-outline'),
                 makeItem('Open settings', 'stereos.openSettings', 'gear'),
@@ -582,7 +606,7 @@ async function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('stereos.openSettings', () => {
         vscode.commands.executeCommand('workbench.action.openSettings', 'stereos');
     }));
-    context.subscriptions.push(trackChangeCmd, connectAccountCmd, configureCmd, toggleCmd, viewCmd, openDashboardCmd, openEventCmd);
+    context.subscriptions.push(trackChangeCmd, connectAccountCmd, configureCmd, toggleCmd, openDashboardCmd, openEventCmd);
     // Set context so all commands show in palette (deep links work without token)
     vscode.commands.executeCommand('setContext', 'stereos.enabled', true);
     resolveToken().then(t => {
@@ -593,22 +617,5 @@ async function activate(context) {
 }
 function deactivate() {
     console.log('STEREOS extension is now deactivated');
-}
-function getProvenanceHtml(dashboardUrl) {
-    const src = dashboardUrl.replace(/"/g, '&quot;');
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>STEREOS Provenance</title>
-  <style>
-    body { font-family: system-ui; padding: 0; margin: 0; }
-    iframe { width: 100%; height: 100vh; border: none; }
-  </style>
-</head>
-<body>
-  <iframe src="${src}" />
-</body>
-</html>`;
 }
 //# sourceMappingURL=extension.js.map

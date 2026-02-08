@@ -57,16 +57,14 @@ export async function createStripeMeterEvent(
     return;
   }
   try {
-    await (client as unknown as { request: (opts: { method: string; path: string; params?: Record<string, unknown> }) => Promise<unknown> }).request({
-      method: 'POST',
-      path: 'billing/meter_events',
-      params: {
-        event_name: STRIPE_METER_EVENT_NAME,
-        'payload[stripe_customer_id]': stripeCustomerId,
-        'payload[value]': String(value),
-        timestamp: Math.floor(timestamp.getTime() / 1000),
-        identifier: idempotencyKey.slice(0, 100),
+    await client.billing.meterEvents.create({
+      event_name: STRIPE_METER_EVENT_NAME,
+      payload: {
+        stripe_customer_id: stripeCustomerId,
+        value: String(value),
       },
+      timestamp: Math.floor(timestamp.getTime() / 1000),
+      identifier: idempotencyKey.slice(0, 100),
     });
   } catch (error: unknown) {
     console.error('Failed to create Stripe meter event:', error);

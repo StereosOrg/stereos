@@ -42,3 +42,4 @@ export function consumeSessionTokenFromUrl(): void {
     window.history.replaceState(null, '', newUrl);
   }
 }
+

@@ -2,9 +2,13 @@
   "name": "stereos-provenance",
   "displayName": "Stereos",
   "description": "Track your teams LLM usage metrics",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "stereos",
-  "icon": "resources/extension-icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/StereosOrg/stereos"
+  },
+  "icon": "resources/icon-128.png",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -31,11 +35,6 @@
       {
         "command": "stereos.trackChange",
         "title": "Track Code Change",
-        "category": "STEREOS"
-      },
-      {
-        "command": "stereos.viewProvenance",
-        "title": "View Provenance",
         "category": "STEREOS"
       },
       {
@@ -172,7 +171,6 @@
     "@typescript-eslint/parser": "^6.19.0"
   },
   "dependencies": {
-    "@stereos/sdk": "workspace:*",
     "simple-git": "^3.21.0"
   }
 }

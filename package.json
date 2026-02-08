@@ -20,8 +20,9 @@
     "db:migrate:018": "bun run scripts/run-migrate-018.ts",
     "db:migrate:019": "bun run scripts/run-migrate-019.ts",
     "lint": "eslint . --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit"
-  },
+"typecheck": "tsc --noEmit",
+  "package:extension": "bash packages/vscode-extension/scripts/pack-isolated.sh"
+},
   "workspaces": [
     "apps/*",
     "packages/*"

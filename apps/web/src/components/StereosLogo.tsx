@@ -1,5 +1,3 @@
-import React from 'react';
-
 /** Stereos logo (S mark) - use size/color to match Lucide icon usage. */
 export function StereosLogo({
   size = 24,

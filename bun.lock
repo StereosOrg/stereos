@@ -88,7 +88,6 @@
       "name": "stereos-provenance",
       "version": "1.0.0",
       "dependencies": {
-        "@stereos/sdk": "workspace:*",
         "simple-git": "^3.21.0",
       },
       "devDependencies": {
