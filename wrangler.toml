@@ -20,7 +20,7 @@ FRONTEND_URL = "https://stereos-web.vercel.app"
 # - STRIPE_PRICE_ID
 # - STRIPE_WEBHOOK_SECRET
 # - RESEND_API_KEY (optional; for verification emails in Worker)
-# - RESEND_FROM_EMAIL (optional; default onboarding@resend.dev)
+# - RESEND_FROM_EMAIL (optional; default )
 
 [observability]
 enabled = false

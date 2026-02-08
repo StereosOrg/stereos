@@ -69,7 +69,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const config = vscode.workspace.getConfiguration('stereos');
   const baseUrl = 'https://stereos.jdbohrman.workers.dev';
-  const dashboardUrl = 'https://stereos.netlify.app';
+  const dashboardUrl = 'https://stereos-web.vercel.app/';
 
   // Token: prefer secretStorage (set by deep link or Configure), then config (manual settings.json).
   let tokenCache: string | null | undefined = undefined;
@@ -92,14 +92,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const actorId = config.get<string>('actorId') || 'vscode';
   const debounceMs = config.get<number>('debounceMs') || 5000;
-  const autoTrack = config.get<boolean>('autoTrack') ?? true;
+  function getAutoTrack(): boolean {
+    return config.get<boolean>('autoTrack') ?? true;
+  }
 
   // File watchers: created only once we have a token (from URI or after first resolveToken).
   let watcherInstalled = false;
   function ensureWatchers() {
     if (watcherInstalled || !vscode.workspace.workspaceFolders?.length) return;
     const token = tokenCache ?? config.get<string>('apiToken')?.trim();
-    if (!token || !autoTrack) return;
+    if (!token || !getAutoTrack()) return;
     watcherInstalled = true;
     const watcher = vscode.workspace.createFileSystemWatcher('**/*', false, false, false);
     watcher.onDidCreate(async uri => {
@@ -409,7 +411,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Debounced flush (only runs when watchers are active, i.e. token was present at activation)
   function scheduleFlush() {
-    if (!getStereos() || !autoTrack) return;
+    if (!getStereos() || !getAutoTrack()) return;
 
     if (flushTimeout) {
       clearTimeout(flushTimeout);
@@ -550,10 +552,20 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Toggle auto-track
+  // Toggle auto-track — update the scope that is actually defining the value so the effective config changes
   const toggleCmd = vscode.commands.registerCommand('stereos.toggleAutoTrack', async () => {
     const current = config.get<boolean>('autoTrack') ?? true;
-    await config.update('autoTrack', !current, true);
+    const inspected = config.inspect<boolean>('autoTrack');
+    const target =
+      inspected?.workspaceFolderValue !== undefined
+        ? vscode.ConfigurationTarget.WorkspaceFolder
+        : inspected?.workspaceValue !== undefined
+          ? vscode.ConfigurationTarget.Workspace
+          : vscode.ConfigurationTarget.Global;
+    await config.update('autoTrack', !current, target);
+    if (!current) {
+      ensureWatchers();
+    }
     refreshTree();
     vscode.window.showInformationMessage(
       `Stereos: Auto-tracking ${!current ? 'enabled' : 'disabled'}`
@@ -632,6 +644,12 @@ export async function activate(context: vscode.ExtensionContext) {
   const treeProvider = new StereosTreeProvider();
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('stereos.provenance', treeProvider)
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('stereos.autoTrack')) refreshTree();
+    })
   );
 
   context.subscriptions.push(

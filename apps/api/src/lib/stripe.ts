@@ -279,3 +279,23 @@ async function handleSubscriptionDeleted(db: Database, subscription: Stripe.Subs
     .set({ billing_status: 'unpaid' })
     .where(eq(customers.customer_stripe_id, customerId));
 }
+
+/** Returns true if the Stripe customer has any subscription that is active or trialing (e.g. on trial). */
+export async function customerHasActiveOrTrialingSubscription(
+  stripeCustomerId: string,
+  stripeApiKey?: string
+): Promise<boolean> {
+  const client = getStripe(stripeApiKey);
+  if (!client || stripeCustomerId.startsWith('mock_')) return false;
+  try {
+    const subs = await client.subscriptions.list({
+      customer: stripeCustomerId,
+      status: 'all',
+      limit: 10,
+    });
+    return subs.data.some((s) => s.status === 'active' || s.status === 'trialing');
+  } catch (err) {
+    console.error('Stripe subscription check failed:', err);
+    return false;
+  }
+}
