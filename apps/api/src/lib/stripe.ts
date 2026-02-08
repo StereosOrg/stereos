@@ -3,14 +3,16 @@ import type { Database } from '@stereos/shared/db';
 import { customers, usageEvents } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 
-// Only initialize Stripe if API key is provided
-const stripeApiKey = process.env.STRIPE_SECRET_KEY;
-const stripe = stripeApiKey 
-  ? new Stripe(stripeApiKey, {
-      apiVersion: '2025-02-24.acacia',
-    })
-  : null;
+const STRIPE_API_VERSION = '2025-02-24.acacia' as const;
 
+/** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
+export function getStripe(apiKey?: string): Stripe | null {
+  const key = apiKey ?? (typeof process !== 'undefined' && process.env?.STRIPE_SECRET_KEY);
+  return key ? new Stripe(key, { apiVersion: STRIPE_API_VERSION }) : null;
+}
+
+// For backward compatibility where env is not passed (Node with process.env)
+const stripe = getStripe();
 export { stripe };
 
 // Pricing configuration
@@ -43,14 +45,14 @@ export function getPricingForEvent(eventType: string): PricingTier {
   return tier || { event_type: eventType, unit_price: 1, unit: 'per_event' };
 }
 
-// Create Stripe customer (optional - returns mock ID if Stripe not configured)
-export async function createStripeCustomer(email: string, name: string): Promise<string> {
-  if (!stripe) {
+// Create Stripe customer (optional - returns mock ID if Stripe not configured). Pass stripeApiKey in Workers (c.env.STRIPE_SECRET_KEY).
+export async function createStripeCustomer(email: string, name: string, stripeApiKey?: string): Promise<string> {
+  const client = getStripe(stripeApiKey);
+  if (!client) {
     console.warn('Stripe not configured, using mock customer ID');
     return `mock_cust_${Date.now()}`;
   }
-  
-  const customer = await stripe.customers.create({
+  const customer = await client.customers.create({
     email,
     name,
     metadata: {
@@ -60,25 +62,23 @@ export async function createStripeCustomer(email: string, name: string): Promise
   return customer.id;
 }
 
-// Create usage record in Stripe (optional)
+// Create usage record in Stripe (optional). Pass stripeApiKey in Workers.
 export async function createStripeUsageRecord(
   stripeCustomerId: string,
   quantity: number,
-  timestamp: Date
+  timestamp: Date,
+  stripeApiKey?: string
 ): Promise<void> {
-  if (!stripe) {
+  const client = getStripe(stripeApiKey);
+  if (!client) {
     console.warn('Stripe not configured, skipping usage record');
     return;
   }
-
-  // Skip if using mock customer ID
   if (stripeCustomerId.startsWith('mock_')) {
     return;
   }
-
   try {
-    // Find the subscription for this customer
-    const subscriptions = await stripe.subscriptions.list({
+    const subscriptions = await client.subscriptions.list({
       customer: stripeCustomerId,
       status: 'active',
     });
@@ -91,7 +91,7 @@ export async function createStripeUsageRecord(
     const subscription = subscriptions.data[0];
     const subscriptionItem = subscription.items.data[0];
 
-    await stripe.subscriptionItems.createUsageRecord(subscriptionItem.id, {
+    await client.subscriptionItems.createUsageRecord(subscriptionItem.id, {
       quantity,
       timestamp: Math.floor(timestamp.getTime() / 1000),
       action: 'increment',
@@ -106,19 +106,19 @@ export async function createStripeUsageRecord(
   }
 }
 
-// Track usage event
+// Track usage event. Pass stripeApiKey in Workers (c.env.STRIPE_SECRET_KEY).
 export async function trackUsage(
   db: Database,
   customerId: string,
   partnerId: string,
   eventType: string,
   quantity: number = 1,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  stripeApiKey?: string
 ): Promise<void> {
   const pricing = getPricingForEvent(eventType);
   const totalPrice = (pricing.unit_price * quantity) / 100; // Convert cents to dollars
 
-  // Create usage event record
   await db.insert(usageEvents).values({
     customer_id: customerId,
     partner_id: partnerId,
@@ -130,32 +130,31 @@ export async function trackUsage(
     metadata: { ...metadata, pricing_tier: pricing.unit },
   });
 
-  // Update Stripe usage record (optional)
   const customer = await db.query.customers.findFirst({
     where: eq(customers.id, customerId),
   });
-
   if (customer?.customer_stripe_id) {
-    await createStripeUsageRecord(customer.customer_stripe_id, quantity, new Date());
+    await createStripeUsageRecord(customer.customer_stripe_id, quantity, new Date(), stripeApiKey);
   }
 }
 
 // Price ID for start-trial embedded checkout (subscription)
 const START_TRIAL_PRICE_ID = 'price_1Sy4W0FLodImBHZELOgKS6Jc';
 
-// Create Stripe Embedded Checkout Session for start-trial (returns client_secret for embedding)
+// Create Stripe Embedded Checkout Session for start-trial. Pass stripeApiKey in Workers.
 export async function createEmbeddedCheckoutSession(
   customerId: string,
   stripeCustomerId: string,
-  returnUrl: string
+  returnUrl: string,
+  stripeApiKey?: string
 ): Promise<{ clientSecret: string } | null> {
-  if (!stripe) {
+  const client = getStripe(stripeApiKey);
+  if (!client) {
     console.warn('Stripe not configured, cannot create embedded checkout session');
     return null;
   }
-
   try {
-    const session = await stripe.checkout.sessions.create({
+    const session = await client.checkout.sessions.create({
       mode: 'subscription',
       ui_mode: 'embedded',
       return_url: returnUrl,
@@ -180,17 +179,19 @@ export async function createEmbeddedCheckoutSession(
   }
 }
 
-// Confirm embedded checkout session and mark customer as paid (idempotent). If expectedCustomerId is set, session must belong to that customer.
+// Confirm embedded checkout session. Pass stripeApiKey in Workers.
 export async function confirmCheckoutSession(
   db: Database,
   sessionId: string,
-  expectedCustomerId?: string
+  expectedCustomerId?: string,
+  stripeApiKey?: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!stripe) {
+  const client = getStripe(stripeApiKey);
+  if (!client) {
     return { success: false, error: 'Stripe not configured' };
   }
   try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    const session = await client.checkout.sessions.retrieve(sessionId, {
       expand: ['subscription'],
     });
     if (session.payment_status !== 'paid' && session.status !== 'complete') {
@@ -223,9 +224,10 @@ export async function confirmCheckoutSession(
   }
 }
 
-// Handle Stripe webhook events (optional)
-export async function handleStripeWebhook(db: Database, event: Stripe.Event): Promise<void> {
-  if (!stripe) {
+// Handle Stripe webhook events. Pass stripeApiKey in Workers (optional for webhook validation).
+export async function handleStripeWebhook(db: Database, event: Stripe.Event, _stripeApiKey?: string): Promise<void> {
+  const client = getStripe(_stripeApiKey);
+  if (!client) {
     console.warn('Stripe not configured, skipping webhook');
     return;
   }

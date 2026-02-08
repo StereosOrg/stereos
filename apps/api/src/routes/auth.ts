@@ -61,8 +61,8 @@ router.post('/customers/register', async (c) => {
       return c.json({ error: 'Invalid partner ID' }, 400);
     }
 
-    // Create Stripe customer
-    const stripeCustomerId = await createStripeCustomer(email, name);
+    const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+    const stripeCustomerId = await createStripeCustomer(email, name, stripeKey);
 
     // Generate customer ID
     const customerId = `cust_${crypto.randomUUID().replace(/-/g, '').substr(0, 16)}`;

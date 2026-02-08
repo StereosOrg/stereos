@@ -81,35 +81,43 @@ app.use('*', cors({
 
 // Inject request-scoped db and auth (Neon serverless; required for Workers)
 app.use('*', async (c, next) => {
-  const db = createDb(c.env.DATABASE_URL);
-  const apiKey = c.env.RESEND_API_KEY;
-  const from = c.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-  const auth = createAuth(db, {
-    baseURL: c.env.BASE_URL,
-    trustedOrigins: c.env.TRUSTED_ORIGINS,
-    secret: c.env.BETTER_AUTH_SECRET,
-    sendVerificationEmail: async ({ user, url }) => {
-      if (apiKey) {
-        const result = await sendEmailViaResendFetch({
-          apiKey,
-          from,
-          to: user.email,
-          subject: 'Verify your STEREOS email',
-          html: VERIFICATION_EMAIL_HTML(url),
-        });
-        if (result.error) console.error('[Auth] Resend verification email failed:', result.error);
-      } else {
-        console.warn('[Auth] RESEND_API_KEY not set; verification link for', user.email, ':', url);
-      }
-    },
-    GITHUB_CLIENT_ID: c.env.GITHUB_CLIENT_ID,
-    GITHUB_CLIENT_SECRET: c.env.GITHUB_CLIENT_SECRET,
-    GOOGLE_CLIENT_ID: c.env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: c.env.GOOGLE_CLIENT_SECRET,
-  });
-  c.set('db', db);
-  c.set('auth', auth);
-  await next();
+  try {
+    if (!c.env.DATABASE_URL || !c.env.BETTER_AUTH_SECRET) {
+      return addCorsToResponse(c, c.json({ error: 'Service Unavailable', message: 'Server configuration error' }, 503));
+    }
+    const db = createDb(c.env.DATABASE_URL);
+    const apiKey = c.env.RESEND_API_KEY;
+    const from = c.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    const auth = createAuth(db, {
+      baseURL: c.env.BASE_URL,
+      trustedOrigins: c.env.TRUSTED_ORIGINS,
+      secret: c.env.BETTER_AUTH_SECRET,
+      sendVerificationEmail: async ({ user, url }) => {
+        if (apiKey) {
+          const result = await sendEmailViaResendFetch({
+            apiKey,
+            from,
+            to: user.email,
+            subject: 'Verify your STEREOS email',
+            html: VERIFICATION_EMAIL_HTML(url),
+          });
+          if (result.error) console.error('[Auth] Resend verification email failed:', result.error);
+        } else {
+          console.warn('[Auth] RESEND_API_KEY not set; verification link for', user.email, ':', url);
+        }
+      },
+      GITHUB_CLIENT_ID: c.env.GITHUB_CLIENT_ID,
+      GITHUB_CLIENT_SECRET: c.env.GITHUB_CLIENT_SECRET,
+      GOOGLE_CLIENT_ID: c.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: c.env.GOOGLE_CLIENT_SECRET,
+    });
+    c.set('db', db);
+    c.set('auth', auth);
+    await next();
+  } catch (err) {
+    console.error('[Worker db/auth init]', err);
+    return addCorsToResponse(c, c.json({ error: 'Service Unavailable', message: 'Initialization failed' }, 503));
+  }
 });
 
 app.get('/health', (c) =>

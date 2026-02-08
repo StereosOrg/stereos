@@ -180,11 +180,11 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
         )
       `);
 
-      // Track usage
+      const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
       await trackUsage(db, customerId, partnerId, 'agent_action', 1, {
         actor_id: data.actor_id,
         tool: data.tool,
-      });
+      }, stripeKey);
 
       return c.json({ success: true, event_id: event.id }, 201);
     } else if (data.event_type === 'outcome') {
@@ -198,10 +198,10 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
         })
         .returning();
 
-      // Track usage
+      const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
       await trackUsage(db, customerId, partnerId, 'outcome', 1, {
         status: data.status,
-      });
+      }, stripeKey);
 
       return c.json({ success: true, outcome_id: outcome.id }, 201);
     }

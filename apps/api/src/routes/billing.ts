@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { partners, usageEvents } from '@stereos/shared/schema';
 import { eq, sql } from 'drizzle-orm';
-import { handleStripeWebhook, stripe } from '../lib/stripe.js';
+import { getStripe, handleStripeWebhook } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -48,9 +48,15 @@ router.get('/partners/:partnerId/revenue', async (c) => {
   return c.json({ revenue: revenue.rows });
 });
 
-// Stripe webhook handler
+// Stripe webhook handler (uses c.env in Workers; process.env in Node)
 router.post('/webhooks/stripe', async (c) => {
-  if (!stripe) {
+  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string; STRIPE_WEBHOOK_SECRET?: string } }).env?.STRIPE_SECRET_KEY;
+  const webhookSecret =
+    (c as { env?: { STRIPE_WEBHOOK_SECRET?: string } }).env?.STRIPE_WEBHOOK_SECRET
+    ?? (typeof process !== 'undefined' ? process.env?.STRIPE_WEBHOOK_SECRET : undefined)
+    ?? '';
+  const stripeClient = getStripe(stripeKey);
+  if (!stripeClient) {
     return c.json({ error: 'Stripe not configured' }, 503);
   }
 
@@ -62,13 +68,13 @@ router.post('/webhooks/stripe', async (c) => {
   }
 
   try {
-    const event = stripe.webhooks.constructEvent(
+    const event = stripeClient.webhooks.constructEvent(
       payload,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET || ''
+      webhookSecret
     );
 
-    await handleStripeWebhook(c.get('db'), event);
+    await handleStripeWebhook(c.get('db'), event, stripeKey);
 
     return c.json({ received: true });
   } catch (error) {

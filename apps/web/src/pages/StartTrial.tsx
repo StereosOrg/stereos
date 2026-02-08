@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
+import { CreditCard } from 'lucide-react';
 import { AuthLayout } from '../components/AuthLayout';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 
@@ -114,27 +115,45 @@ export function StartTrial() {
     []
   );
 
+  const cardStyle: React.CSSProperties = {
+    padding: 0,
+    overflow: 'visible',
+    background: 'var(--bg-white)',
+    border: 'var(--border-width) solid var(--border-color)',
+    boxShadow: 'var(--shadow-offset) var(--shadow-offset) 0 var(--border-color)',
+  };
+
+  const errorBlockStyle: React.CSSProperties = {
+    background: 'var(--bg-pink)',
+    border: 'var(--border-width) solid #dc2626',
+    padding: '16px 20px',
+    color: '#dc2626',
+    fontWeight: 700,
+    boxShadow: '4px 4px 0 #dc2626',
+  };
+
   if (sessionId) {
     return (
       <AuthLayout title="Start your trial" subtitle="Confirming your payment…">
-        <div className="card" style={{ padding: '32px', textAlign: 'center' }}>
+        <div className="card" style={{ ...cardStyle, padding: '32px', textAlign: 'center' }}>
           {confirming && !error && (
-            <p style={{ color: '#555', marginBottom: '16px' }}>One moment…</p>
-          )}
-          {error && (
-            <div
-              style={{
-                background: '#fee2e2',
-                border: '3px solid #dc2626',
-                padding: '16px',
-                color: '#dc2626',
-                fontWeight: 600,
-              }}
-            >
-              {error}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+              <div
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  border: '3px solid var(--border-color)',
+                  borderTopColor: 'var(--dark)',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                }}
+              />
+              <p style={{ color: 'var(--dark)', fontWeight: 600 }}>One moment…</p>
             </div>
           )}
+          {error && <div style={errorBlockStyle}>{error}</div>}
         </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </AuthLayout>
     );
   }
@@ -142,18 +161,17 @@ export function StartTrial() {
   if (!stripePublishableKey) {
     return (
       <AuthLayout title="Start your trial">
-        <div className="card" style={{ padding: '24px' }}>
-          {hasWrongKey ? (
-            <p style={{ color: '#666' }}>
-              Use your <strong>publishable</strong> key (<code>pk_test_...</code> or <code>pk_live_...</code>) in{' '}
-              <code>VITE_STRIPE_PUBLISHABLE_KEY</code>, not your secret key (<code>sk_...</code>). Secret keys must
-              stay on the server only.
-            </p>
-          ) : (
-            <p style={{ color: '#666' }}>
-              Stripe is not configured. Set VITE_STRIPE_PUBLISHABLE_KEY (publishable key) to enable checkout.
-            </p>
-          )}
+        <div className="card" style={{ ...cardStyle, padding: '24px' }}>
+          <p style={{ color: 'var(--dark)', fontSize: '15px', lineHeight: 1.6 }}>
+            {hasWrongKey ? (
+              <>
+                Use your <strong>publishable</strong> key (<code>pk_test_...</code> or <code>pk_live_...</code>) in{' '}
+                <code>VITE_STRIPE_PUBLISHABLE_KEY</code>, not your secret key. Secret keys must stay on the server only.
+              </>
+            ) : (
+              'Stripe is not configured. Set VITE_STRIPE_PUBLISHABLE_KEY (publishable key) to enable checkout.'
+            )}
+          </p>
         </div>
       </AuthLayout>
     );
@@ -162,9 +180,21 @@ export function StartTrial() {
   if (loading) {
     return (
       <AuthLayout title="Start your trial" subtitle="Loading checkout…">
-        <div className="card" style={{ padding: '32px', textAlign: 'center' }}>
-          <p style={{ color: '#555' }}>Loading…</p>
+        <div className="card" style={{ ...cardStyle, padding: '40px', textAlign: 'center' }}>
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              margin: '0 auto 16px',
+              border: '3px solid var(--border-color)',
+              borderTopColor: 'var(--dark)',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }}
+          />
+          <p style={{ color: 'var(--dark)', fontWeight: 600 }}>Loading…</p>
         </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </AuthLayout>
     );
   }
@@ -172,18 +202,8 @@ export function StartTrial() {
   if (error && !clientSecret) {
     return (
       <AuthLayout title="Start your trial">
-        <div className="card" style={{ padding: '24px' }}>
-          <div
-            style={{
-              background: '#fee2e2',
-              border: '3px solid #dc2626',
-              padding: '16px',
-              color: '#dc2626',
-              fontWeight: 600,
-            }}
-          >
-            {error}
-          </div>
+        <div className="card" style={{ ...cardStyle, padding: '24px' }}>
+          <div style={errorBlockStyle}>{error}</div>
         </div>
       </AuthLayout>
     );
@@ -192,8 +212,8 @@ export function StartTrial() {
   if (!clientSecret) {
     return (
       <AuthLayout title="Start your trial">
-        <div className="card" style={{ padding: '24px' }}>
-          <p style={{ color: '#666' }}>Unable to start checkout. Please try again.</p>
+        <div className="card" style={{ ...cardStyle, padding: '24px' }}>
+          <p style={{ color: 'var(--dark)' }}>Unable to start checkout. Please try again.</p>
         </div>
       </AuthLayout>
     );
@@ -203,36 +223,44 @@ export function StartTrial() {
     <AuthLayout
       title="Start your trial"
       subtitle="Complete payment below to continue. You can only proceed after checkout is done."
-      contentMaxWidth={720}
+      contentMaxWidth={560}
     >
-      <div
-        className="card"
-        style={{
-          padding: 0,
-          overflow: 'visible',
-          background: 'var(--bg-white)',
-          border: 'var(--border-width) solid var(--border-color)',
-          boxShadow: 'var(--shadow-offset) var(--shadow-offset) 0 var(--border-color)',
-        }}
-      >
+      <div className="card" style={cardStyle}>
         <div
           style={{
             borderBottom: 'var(--border-width) solid var(--border-color)',
             padding: '20px 24px',
             background: 'var(--bg-white)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
           }}
         >
-          <p style={{ color: 'var(--dark)', fontSize: '15px', margin: 0, fontWeight: 500 }}>
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              border: 'var(--border-width) solid var(--border-color)',
+              background: 'var(--bg-mint)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '4px 4px 0 var(--border-color)',
+            }}
+          >
+            <CreditCard size={22} color="var(--dark)" strokeWidth={3} />
+          </div>
+          <p style={{ color: 'var(--dark)', fontSize: '15px', margin: 0, fontWeight: 600 }}>
             Enter your payment details below. When finished, you’ll be able to continue.
           </p>
         </div>
+        {/* Stripe Embedded Checkout (iframe). Match our aesthetic in Stripe Dashboard → Branding: button #1a1a1a, background #ffffff, font Inter, sharp corners. */}
         <div
           id="stripe-embedded-checkout"
           style={{
-            minHeight: '520px',
+            minHeight: '480px',
             width: '100%',
             display: 'block',
-            paddingBottom: '24px',
           }}
         >
           {stripePromise && clientSecret && (

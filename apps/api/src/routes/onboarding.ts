@@ -160,10 +160,11 @@ router.post('/onboarding/checkout-session', requireAuth as (c: unknown, next: ()
     return c.json({ error: 'Customer not found. Complete onboarding first.' }, 404);
   }
 
+  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
   const cust = customer as { customer_stripe_id?: string | null; billing_email?: string | null; company_name?: string | null };
   let stripeCustomerId = cust.customer_stripe_id ?? '';
   if (!stripeCustomerId || stripeCustomerId.startsWith('mock_')) {
-    stripeCustomerId = await createStripeCustomer(cust.billing_email ?? '', cust.company_name ?? '');
+    stripeCustomerId = await createStripeCustomer(cust.billing_email ?? '', cust.company_name ?? '', stripeKey);
     if (stripeCustomerId.startsWith('mock_')) {
       return c.json(
         { error: 'Stripe is not configured on the server. Add STRIPE_SECRET_KEY to enable checkout.' },
@@ -181,7 +182,8 @@ router.post('/onboarding/checkout-session', requireAuth as (c: unknown, next: ()
   const result = await createEmbeddedCheckoutSession(
     customer.id,
     stripeCustomerId,
-    returnUrl
+    returnUrl,
+    stripeKey
   );
   if (!result) {
     return c.json({ error: 'Failed to create checkout session' }, 500);
@@ -198,7 +200,8 @@ router.post('/onboarding/confirm-checkout', requireAuth as (c: unknown, next: ()
   if (!customer) {
     return c.json({ error: 'Customer not found' }, 404);
   }
-  const result = await confirmCheckoutSession(c.get('db'), session_id, customer.id);
+  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+  const result = await confirmCheckoutSession(c.get('db'), session_id, customer.id, stripeKey);
   if (!result.success) {
     return c.json({ error: result.error ?? 'Confirmation failed' }, 400);
   }
