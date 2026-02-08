@@ -270,14 +270,33 @@ async function handlePaymentFailed(db: Database, invoice: Stripe.Invoice): Promi
 }
 
 async function handleSubscriptionDeleted(db: Database, subscription: Stripe.Subscription): Promise<void> {
-  const customerId = typeof subscription.customer === 'string'
+  const stripeCustomerId = typeof subscription.customer === 'string'
     ? subscription.customer
     : subscription.customer.id;
 
+  // Only set 'unpaid' if the deleted subscription is the one we have on record,
+  // or if no other active/trialing subscription exists for this customer.
+  const customerRow = await db.query.customers.findFirst({
+    where: eq(customers.customer_stripe_id, stripeCustomerId),
+    columns: { stripe_subscription_id: true },
+  });
+
+  // If the deleted subscription isn't the one stored, check if the stored one is still valid
+  if (customerRow?.stripe_subscription_id && customerRow.stripe_subscription_id !== subscription.id) {
+    // A different subscription was deleted — the customer's current subscription is unaffected
+    return;
+  }
+
+  // The current subscription was deleted — check if another active/trialing subscription exists
+  const hasOther = await customerHasActiveOrTrialingSubscription(stripeCustomerId);
+  if (hasOther) {
+    return;
+  }
+
   await db
     .update(customers)
-    .set({ billing_status: 'unpaid' })
-    .where(eq(customers.customer_stripe_id, customerId));
+    .set({ billing_status: 'canceled' })
+    .where(eq(customers.customer_stripe_id, stripeCustomerId));
 }
 
 /** Returns true if the Stripe customer has any subscription that is active or trialing (e.g. on trial). */
@@ -286,16 +305,24 @@ export async function customerHasActiveOrTrialingSubscription(
   stripeApiKey?: string
 ): Promise<boolean> {
   const client = getStripe(stripeApiKey);
-  if (!client || stripeCustomerId.startsWith('mock_')) return false;
+  if (!client) {
+    console.warn('Stripe not configured — cannot verify subscription for', stripeCustomerId);
+    return false;
+  }
+  if (stripeCustomerId.startsWith('mock_')) return false;
   try {
     const subs = await client.subscriptions.list({
       customer: stripeCustomerId,
       status: 'all',
       limit: 10,
     });
-    return subs.data.some((s) => s.status === 'active' || s.status === 'trialing');
+    const match = subs.data.find((s) => s.status === 'active' || s.status === 'trialing');
+    if (!match) {
+      console.warn(`No active/trialing subscription for ${stripeCustomerId}. Statuses: ${subs.data.map((s) => s.status).join(', ') || 'none'}`);
+    }
+    return !!match;
   } catch (err) {
-    console.error('Stripe subscription check failed:', err);
+    console.error(`Stripe subscription check failed for ${stripeCustomerId}:`, err);
     return false;
   }
 }

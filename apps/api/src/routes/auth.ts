@@ -126,7 +126,7 @@ router.post('/customers/register', async (c) => {
         partner_id: partner.id,
         customer_id: customerId,
         customer_stripe_id: stripeCustomerId,
-        billing_status: 'active',
+        billing_status: 'trial',
       })
       .returning();
 

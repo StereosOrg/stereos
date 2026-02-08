@@ -130,7 +130,7 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
         onboarding_completed: true,
         onboarding_completed_at: new Date(),
         payment_info_provided: false,
-        billing_status: 'active',
+        billing_status: 'trial',
       })
       .returning();
 

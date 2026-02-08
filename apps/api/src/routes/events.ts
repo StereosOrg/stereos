@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { apiTokens, customers, users, provenanceEvents, artifactLinks, outcomes } from '@stereos/shared/schema';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
-import { trackUsage, customerHasActiveOrTrialingSubscription } from '../lib/stripe.js';
+import { trackUsage } from '../lib/stripe.js';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
 
@@ -64,26 +64,9 @@ const authMiddleware = async (c: any, next: any) => {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }
 
-  // Check billing status — block only if unpaid and Stripe confirms no active/trialing subscription
-  if (apiToken.customer.billing_status === 'unpaid') {
-    const db = c.get('db');
-    const customerRow = await db.query.customers.findFirst({
-      where: eq(customers.id, apiToken.customer.id),
-      columns: { customer_stripe_id: true },
-    });
-    const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
-    const hasActiveOrTrialing =
-      customerRow?.customer_stripe_id &&
-      (await customerHasActiveOrTrialingSubscription(customerRow.customer_stripe_id, stripeKey));
-    if (hasActiveOrTrialing) {
-      await db
-        .update(customers)
-        .set({ billing_status: 'active' })
-        .where(eq(customers.id, apiToken.customer.id));
-      apiToken.customer.billing_status = 'active';
-    } else {
-      return c.json({ error: 'Billing issue - please update payment method' }, 403);
-    }
+  // Allow trial and active statuses; block canceled
+  if (apiToken.customer.billing_status === 'canceled') {
+    return c.json({ error: 'Subscription canceled - please resubscribe to continue' }, 403);
   }
 
   c.set('apiToken', apiToken);
@@ -97,9 +80,11 @@ const sessionOrTokenAuth = async (c: any, next: any) => {
     const token = authHeader.substring(7);
     if (token && token !== 'null' && token !== 'undefined') {
       const apiToken = await validateApiToken(c, token);
-      if (apiToken && apiToken.customer.billing_status !== 'unpaid') {
-        c.set('apiToken', apiToken);
-        return next();
+      if (apiToken) {
+        if (apiToken.customer.billing_status !== 'canceled') {
+          c.set('apiToken', apiToken);
+          return next();
+        }
       }
     }
   }
@@ -393,6 +378,77 @@ router.get('/events/search', sessionOrTokenAuth, async (c) => {
   }));
 
   return c.json({ events: eventsWithUser, limit, offset });
+});
+
+// GET /v1/events/:eventId/file?path=... - Single file diff drilldown
+router.get('/events/:eventId/file', sessionOrTokenAuth, async (c) => {
+  const eventId = c.req.param('eventId');
+  const filePath = c.req.query('path');
+  const apiToken = c.get('apiToken') as ApiTokenPayload;
+  const db = c.get('db');
+  const customerId = apiToken.customer.id;
+
+  if (!filePath) {
+    return c.json({ error: 'File path is required (use ?path=...)' }, 400);
+  }
+
+  const event = await db.query.provenanceEvents.findFirst({
+    where: and(
+      eq(provenanceEvents.id, eventId),
+      eq(provenanceEvents.customer_id, customerId)
+    ),
+    with: {
+      artifacts: true,
+    },
+  });
+
+  if (!event) {
+    return c.json({ error: 'Event not found' }, 404);
+  }
+
+  // Check that this file is in the event's files_written
+  if (!event.files_written?.includes(filePath)) {
+    return c.json({ error: 'File not found in this event' }, 404);
+  }
+
+  // Extract the single file diff from artifacts' diff_content
+  let fileDiff: { path: string; hunks: unknown[] } | null = null;
+  for (const artifact of event.artifacts) {
+    if (!artifact.diff_content) continue;
+    try {
+      const parsed = JSON.parse(artifact.diff_content);
+      if (Array.isArray(parsed)) {
+        const match = parsed.find((f: { path: string }) => f.path === filePath);
+        if (match) {
+          fileDiff = match;
+          break;
+        }
+      }
+    } catch {
+      // Not JSON — skip
+    }
+  }
+
+  const user = event.user_id
+    ? await db.query.users.findFirst({
+        where: eq(users.id, event.user_id),
+        columns: { id: true, name: true, image: true, email: true },
+      })
+    : null;
+
+  return c.json({
+    event: {
+      id: event.id,
+      intent: event.intent,
+      actor_id: event.actor_id,
+      tool: event.tool,
+      model: event.model,
+      timestamp: event.timestamp,
+      user,
+    },
+    file_path: filePath,
+    diff: fileDiff,
+  });
 });
 
 // GET /v1/events/:eventId - Single event drilldown

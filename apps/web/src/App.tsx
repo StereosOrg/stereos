@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard';
 import { ProvenanceView } from './pages/ProvenanceView';
 import { EventsSearch } from './pages/EventsSearch';
 import { EventDetail } from './pages/EventDetail';
+import { EventFileDiff } from './pages/EventFileDiff';
 import { Settings } from './pages/Settings';
 import { UsersList } from './pages/UsersList';
 import { UserProfile } from './pages/UserProfile';
@@ -52,6 +53,7 @@ function App() {
         <Route path="provenance" element={<ProvenanceView />} />
         <Route path="events" element={<EventsSearch />} />
         <Route path="events/:eventId" element={<EventDetail />} />
+        <Route path="events/:eventId/file" element={<EventFileDiff />} />
         <Route path="settings" element={<Settings />} />
         <Route path="users" element={<UsersList />} />
         <Route path="users/:userId" element={<UserProfile />} />

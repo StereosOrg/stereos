@@ -326,17 +326,31 @@ export function EventDetail() {
               }}
             >
               {event.files_written.map((path, i) => (
-                <code
+                <Link
                   key={i}
+                  to={`/events/${event.id}/file?path=${encodeURIComponent(path)}`}
                   style={{
                     padding: '6px 12px',
                     background: 'var(--bg-mint)',
                     border: '2px solid var(--border-color)',
                     fontSize: '13px',
+                    fontFamily: 'ui-monospace, monospace',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, box-shadow 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-cream)';
+                    e.currentTarget.style.boxShadow = '2px 2px 0 var(--border-color)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-mint)';
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
                   {path}
-                </code>
+                </Link>
               ))}
             </div>
           </div>

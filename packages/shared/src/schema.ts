@@ -96,7 +96,7 @@ export const customers = pgTable('Customer', {
   stripe_subscription_id: text('stripe_subscription_id'),
   onboarding_completed: boolean('onboarding_completed').default(false),
   onboarding_completed_at: timestamp('onboarding_completed_at', { withTimezone: true }),
-  billing_status: text('billing_status').default('active').notNull(),
+  billing_status: text('billing_status').default('trial').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
 });
