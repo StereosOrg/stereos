@@ -3,7 +3,7 @@ import { users, provenanceEvents, usageEvents, customers } from '@stereos/shared
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getCustomerForUser } from '../lib/middleware.js';
+import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
 
 const updateMeSchema = z.object({
@@ -19,48 +19,23 @@ function sqlRows(result: unknown): unknown[] {
   return Array.isArray(result) ? result : (result as { rows?: unknown[] })?.rows ?? [];
 }
 
-// Middleware to check if user is admin
+// Middleware to check if user is admin (uses getCurrentUser so Bearer/magic-link sessions work)
 const requireAdmin = async (c: any, next: any) => {
-  const auth = c.get('auth');
-  const db = c.get('db');
-  const session = await auth.api.getSession({
-    headers: c.req.raw.headers,
-  });
-  
-  if (!session?.user) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-  
-  // Get user with role from database
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, session.user.id),
-    columns: {
-      id: true,
-      role: true,
-      email: true,
-      name: true,
-    },
-  });
-  
-  if (!user || user.role !== 'admin') {
+  const user = await getCurrentUser(c);
+  if (!user || (user as { role?: string }).role !== 'admin') {
     return c.json({ error: 'Forbidden - Admin access required' }, 403);
   }
-  
   c.set('user', user);
   await next();
 };
 
-// Middleware to check authentication (any logged-in user)
+// Middleware to check authentication (any logged-in user; uses getCurrentUser so Bearer/magic-link sessions work)
 const requireAuth = async (c: any, next: any) => {
-  const session = await c.get('auth').api.getSession({
-    headers: c.req.raw.headers,
-  });
-  
-  if (!session?.user) {
+  const user = await getCurrentUser(c);
+  if (!user) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
-  
-  c.set('session', session);
+  c.set('user', user);
   await next();
 };
 
@@ -281,16 +256,16 @@ router.patch('/users/:userId/role', requireAdmin, async (c) => {
 
 // PATCH /v1/me - Update current user profile (e.g. image URL)
 router.patch('/me', requireAuth, zValidator('json', updateMeSchema), async (c) => {
-  const session = c.get('session')!;
+  const currentUser = c.get('user')!;
   const data = c.req.valid('json');
   const db = c.get('db');
   try {
     await db
       .update(users)
       .set({ image: data.image ?? null })
-      .where(eq(users.id, session.user.id));
+      .where(eq(users.id, currentUser.id));
     const user = await db.query.users.findFirst({
-      where: eq(users.id, session.user.id),
+      where: eq(users.id, currentUser.id),
       columns: { id: true, email: true, name: true, role: true, createdAt: true, image: true },
     });
     return c.json({ user });
@@ -302,12 +277,12 @@ router.patch('/me', requireAuth, zValidator('json', updateMeSchema), async (c) =
 
 // GET /v1/me - Get current user profile (any authenticated user)
 router.get('/me', requireAuth, async (c) => {
-  const session = c.get('session')!;
+  const currentUser = c.get('user')!;
   const db = c.get('db');
   
   try {
     const user = await db.query.users.findFirst({
-      where: eq(users.id, session.user.id),
+      where: eq(users.id, currentUser.id),
       columns: {
         id: true,
         email: true,
@@ -336,7 +311,7 @@ router.get('/me', requireAuth, async (c) => {
         COUNT(DISTINCT DATE_TRUNC('day', timestamp)) as active_days,
         MAX(timestamp) as last_activity
       FROM "ProvenanceEvent"
-      WHERE user_id = ${session.user.id}
+        WHERE user_id = ${currentUser.id}
     `);
     
     const meUsageRows = sqlRows(usageStats);
