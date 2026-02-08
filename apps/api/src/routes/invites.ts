@@ -78,7 +78,14 @@ router.post('/invites', requireAdmin, zValidator('json', inviteCreateSchema), as
   const frontendUrl = process.env.FRONTEND_URL || process.env.TRUSTED_ORIGINS?.split(',')?.[0]?.trim() || 'http://localhost:5173';
   const inviteUrl = `${frontendUrl.replace(/\/$/, '')}/auth/accept-invite?token=${encodeURIComponent(token)}`;
   const inviterName = (await db.query.users.findFirst({ where: eq(users.id, adminUser!.id), columns: { name: true } }))?.name || 'A teammate';
-  await sendInviteEmail(email, inviteUrl, inviterName, customer.company_name || 'the workspace');
+
+  try {
+    await sendInviteEmail(email, inviteUrl, inviterName, customer.company_name || 'the workspace');
+  } catch (err) {
+    console.error('[Invites] Email send failed, cleaning up invite record', err);
+    await db.delete(invites).where(eq(invites.id, invite.id));
+    return c.json({ error: 'Failed to send invite email' }, 500);
+  }
 
   return c.json({ invite: { id: invite.id, email: invite.email, expires_at: invite.expires_at } }, 201);
 });
