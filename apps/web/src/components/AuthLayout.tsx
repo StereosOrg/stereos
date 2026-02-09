@@ -1,5 +1,3 @@
-import { StereosLogo } from './StereosLogo';
-
 interface AuthLayoutProps {
   children: React.ReactNode;
   title: string;
@@ -17,34 +15,22 @@ export function AuthLayout({ children, title, subtitle, contentMaxWidth = 420 }:
         alignItems: 'center',
         justifyContent: 'center',
         background: 'var(--bg-mint)',
-        padding: '24px',
+        padding: '16px',
       }}
     >
       <div style={{ width: '100%', maxWidth: `${contentMaxWidth}px` }}>
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '12px',
-              marginBottom: '12px',
-            }}
-          >
-            <div
+        <div style={{ textAlign: 'center', marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ marginBottom: '8px' }}>
+            <img
+              src="/transparent-logo.png"
+              alt="Stereos"
               style={{
-                width: '48px',
-                height: '48px',
-                background: 'var(--dark)',
-                border: '3px solid var(--border-color)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '4px 4px 0 var(--border-color)',
+                height: '64px',
+                width: 'auto',
+                display: 'block',
+                objectFit: 'contain',
               }}
-            >
-              <StereosLogo size={24} color="white" />
-            </div>
-            <span style={{ fontSize: '28px', fontWeight: 800 }}>STEREOS</span>
+            />
           </div>
           <h1 className="heading-2" style={{ fontSize: '24px', marginBottom: '4px' }}>
             {title}

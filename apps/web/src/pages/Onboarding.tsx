@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
-import { StereosLogo } from '../components/StereosLogo';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 
 const titles = [
@@ -96,7 +95,7 @@ export function Onboarding() {
         alignItems: 'center',
         justifyContent: 'center',
         background: 'var(--bg-mint)',
-        padding: '24px',
+        padding: '16px',
       }}
     >
       <div
@@ -106,30 +105,18 @@ export function Onboarding() {
         }}
       >
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '12px',
-              marginBottom: '16px',
-            }}
-          >
-            <div
+        <div style={{ textAlign: 'center', marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ marginBottom: '8px' }}>
+            <img
+              src="/transparent-logo.png"
+              alt="Stereos"
               style={{
-                width: '48px',
-                height: '48px',
-                background: 'var(--dark)',
-                border: '3px solid var(--border-color)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '4px 4px 0 var(--border-color)',
+                height: '64px',
+                width: 'auto',
+                display: 'block',
+                objectFit: 'contain',
               }}
-            >
-              <StereosLogo size={24} color="white" />
-            </div>
-            <span style={{ fontSize: '28px', fontWeight: 800 }}>STEREOS</span>
+            />
           </div>
           <p style={{ color: '#555', fontSize: '16px' }}>
             Complete your setup to get started
