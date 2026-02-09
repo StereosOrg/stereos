@@ -7,8 +7,8 @@ import { eq } from 'drizzle-orm';
 const STRIPE_API_VERSION = '2025-03-31.basil' as '2025-02-24.acacia';
 
 /** Single usage-based plan: $0.12 per unit per month */
-export const USAGE_PRICE_ID = 'price_1SyaJ0FRJliLrxglnVeKgk4H';
-const UNIT_PRICE_CENTS = 12; // $0.12 per unit
+export const USAGE_PRICE_ID = 'price_1SyeufFRJliLrxglZwR0S622';
+const UNIT_PRICE_CENTS = 3; // $0.12 per unit
 
 /** Stripe meter event name for provenance events (must match meter in Stripe Dashboard) */
 export const STRIPE_METER_EVENT_NAME = 'provenance_events';

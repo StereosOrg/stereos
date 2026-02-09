@@ -68,8 +68,8 @@ export async function activate(context: vscode.ExtensionContext) {
   console.log('STEREOS extension is now active');
 
   const config = vscode.workspace.getConfiguration('stereos');
-  const baseUrl = 'https://stereos.jdbohrman.workers.dev';
-  const dashboardUrl = 'https://stereos-web.vercel.app/';
+  const baseUrl = 'https://api.trystereos.com';
+  const dashboardUrl = 'https://app.trystereos.com';
 
   // Token: prefer secretStorage (set by deep link or Configure), then config (manual settings.json).
   let tokenCache: string | null | undefined = undefined;
