@@ -1,8 +1,8 @@
 {
   "name": "stereos-provenance",
   "displayName": "Stereos",
-  "description": "Track your teams LLM usage metrics",
-  "version": "1.0.3",
+  "description": "The usage ledger for your teams LLM tools",
+  "version": "1.0.4",
   "publisher": "stereos",
   "repository": {
     "type": "git",
