@@ -9,6 +9,15 @@ import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
+// ── Pre-flight for Cloudflare Observability Destinations ─────────────────
+// Cloudflare probes the endpoint with GET/HEAD/OPTIONS before saving; OTLP is POST-only.
+// Returning 200 for these methods allows the destination to be created.
+// Use router.on() so HEAD/OPTIONS work in Workers (router.head may be missing in bundle).
+
+router.on(['HEAD', 'OPTIONS'], '/traces', (c) => c.body(null, 200));
+router.on(['HEAD', 'OPTIONS'], '/logs', (c) => c.body(null, 200));
+router.on(['HEAD', 'OPTIONS'], '/metrics', (c) => c.body(null, 200));
+
 // ── OTLP Ingestion: Traces ──────────────────────────────────────────────
 
 router.post('/traces', authMiddleware, async (c) => {

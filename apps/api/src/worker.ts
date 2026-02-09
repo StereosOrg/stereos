@@ -13,6 +13,7 @@ import billingRouter from './routes/billing.js';
 import usersRouter from './routes/users.js';
 import onboardingRouter from './routes/onboarding.js';
 import invitesRouter from './routes/invites.js';
+import telemetryRouter from './routes/telemetry.js';
 
 // Cache db and auth per isolate to avoid expensive re-initialization on every request.
 // Env bindings are stable within a deployment, so we key by DATABASE_URL to detect changes.
@@ -168,6 +169,7 @@ app.route('/v1', billingRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);
+app.route('/v1', telemetryRouter);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/v1/') || c.req.path === '/health') {
