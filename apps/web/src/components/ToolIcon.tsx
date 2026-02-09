@@ -59,6 +59,67 @@ interface ToolIconProps {
   className?: string;
 }
 
+// ── Vendor icons for Tool Profiles ─────────────────────────────────────
+
+const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number; className?: string }>> = {
+  'cloudflare-workers': '/vendors/cloudflare.svg',
+  cursor: CursorIcon,
+  vscode: '/vendors/vscode.svg',
+  arcade: '/vendors/arcade.svg',
+  e2b: '/vendors/e2b.svg',
+};
+
+interface VendorIconProps {
+  vendor: string;
+  displayName?: string;
+  size?: number;
+  className?: string;
+}
+
+export function VendorIcon({ vendor, displayName, size = 32, className }: VendorIconProps) {
+  const logo = VENDOR_LOGOS[vendor];
+
+  if (typeof logo === 'string') {
+    return (
+      <img
+        src={logo}
+        alt={displayName || vendor}
+        className={className}
+        style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }}
+      />
+    );
+  }
+
+  if (typeof logo === 'function') {
+    const Icon = logo;
+    return <Icon size={size} className={className} />;
+  }
+
+  // Letter-badge fallback
+  const letter = (displayName || vendor || '?').charAt(0).toUpperCase();
+  return (
+    <div
+      className={className}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '6px',
+        background: 'var(--bg-lavender)',
+        border: '2px solid var(--border-color)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: Math.round(size * 0.5),
+        fontWeight: 800,
+        color: 'var(--dark)',
+        flexShrink: 0,
+      }}
+    >
+      {letter}
+    </div>
+  );
+}
+
 export function ToolIcon({ actorId, tool, size = 24, className }: ToolIconProps) {
   const key = getToolKey(actorId ?? '', tool ?? '');
   const Icon = key ? TOOL_ICONS[key] : null;

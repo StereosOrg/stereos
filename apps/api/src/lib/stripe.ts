@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 const STRIPE_API_VERSION = '2025-03-31.basil' as '2025-02-24.acacia';
 
 /** Single usage-based plan: $0.12 per unit per month */
-export const USAGE_PRICE_ID = 'price_1SyeufFRJliLrxglZwR0S622';
+export const USAGE_PRICE_ID = 'price_1Sy4W0FLodImBHZELOgKS6Jc';
 const UNIT_PRICE_CENTS = 3; // $0.12 per unit
 
 /** Stripe meter event name for provenance events (must match meter in Stripe Dashboard) */
@@ -129,7 +129,7 @@ export async function createEmbeddedCheckoutSession(
       metadata: { customer_id: customerId },
       line_items: [
         { price: USAGE_PRICE_ID },
-        { price: 'price_1SyaJ0FRJliLrxglp9L6uTWT', quantity: 1 },
+        { price: 'price_1SyXeyFLodImBHZEmzi5Z2qr', quantity: 1 },
       ],
       subscription_data: {
         trial_period_days: 14,

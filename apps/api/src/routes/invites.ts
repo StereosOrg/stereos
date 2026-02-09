@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { users, accounts, customers, invites, customerMembers } from '@stereos/shared/schema';
+import { users, accounts, customers, invites } from '@stereos/shared/schema';
 import { newUuid, newInviteToken } from '@stereos/shared/ids';
 import { eq, and, isNull } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
@@ -168,11 +168,9 @@ router.post('/invites/accept', zValidator('json', inviteAcceptSchema), async (c)
   const workspaceCustomerId = (inviterCustomer as { id: string }).id;
 
   // Join the same workspace (Customer); do NOT create a new Customer or Stripe customer
-  await db.insert(customerMembers).values({
+  await db.update(users).set({
     customer_id: workspaceCustomerId,
-    user_id: userId,
-    onboarding_completed: false,
-  });
+  }).where(eq(users.id, userId));
 
   await db.update(invites).set({ used_at: new Date() }).where(eq(invites.id, invite.id));
 

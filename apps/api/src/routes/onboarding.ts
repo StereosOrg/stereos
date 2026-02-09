@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { users, customers, customerMembers, partners } from '@stereos/shared/schema';
+import { users, customers, partners } from '@stereos/shared/schema';
 import { newUuid, newCustomerId } from '@stereos/shared/ids';
 import { eq, sql } from 'drizzle-orm';
 import { createStripeCustomer, createEmbeddedCheckoutSession, confirmCheckoutSession } from '../lib/stripe.js';
-import { requireAuth, getCurrentUser, getCustomerForUser, getMemberForUser, getFrontendBaseUrl } from '../lib/middleware.js';
+import { requireAuth, getCurrentUser, getCustomerForUser, getFrontendBaseUrl } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -34,15 +34,22 @@ router.get('/onboarding/status', async (c) => {
     }
 
     const customer = await getCustomerForUser(c as unknown as import('../types/context.js').HonoContext, user!.id);
-    const member = await getMemberForUser(c as unknown as import('../types/context.js').HonoContext, user.id);
-    const onboardingDone = member ? member.onboarding_completed : (customer?.onboarding_completed ?? false);
+
+    // Read onboarding_completed from users table
+    const db = c.get('db');
+    const fullUser = await db.query.users.findFirst({
+      where: eq(users.id, user!.id),
+      columns: { onboarding_completed: true, customer_id: true },
+    });
+    const onboardingDone = fullUser?.onboarding_completed ?? false;
+    const isMember = !!fullUser?.customer_id && user.role !== 'admin';
 
     return c.json({
       needsAuth: false,
       needsOnboarding: !customer || !onboardingDone,
       needsPayment: !customer || !customer.payment_info_provided,
       isAdmin: user.role === 'admin',
-      isMember: !!member,
+      isMember,
       user: {
         id: user.id,
         email: user.email,
@@ -81,17 +88,21 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
       })
       .where(eq(users.id, user.id));
 
-    const member = await getMemberForUser(c as unknown as import('../types/context.js').HonoContext, user.id);
+    // Check if user already has a customer_id (invited member completing onboarding)
+    const existingUser = await db.query.users.findFirst({
+      where: eq(users.id, user.id),
+      columns: { customer_id: true },
+    });
 
-    // Invited user: joined via CustomerMember; only update user + member onboarding, don't touch shared Customer
-    if (member) {
+    if (existingUser?.customer_id) {
+      // Invited member: just mark onboarding complete on user row
       await db
-        .update(customerMembers)
+        .update(users)
         .set({
           onboarding_completed: true,
           onboarding_completed_at: new Date(),
         })
-        .where(eq(customerMembers.id, member.id));
+        .where(eq(users.id, user.id));
 
       const customer = await getCustomerForUser(c as unknown as import('../types/context.js').HonoContext, user.id);
       return c.json({
@@ -134,7 +145,12 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
       })
       .returning();
 
-    await db.update(users).set({ role: 'admin' }).where(eq(users.id, user.id));
+    await db.update(users).set({
+      role: 'admin',
+      customer_id: customer.id,
+      onboarding_completed: true,
+      onboarding_completed_at: new Date(),
+    }).where(eq(users.id, user.id));
 
     return c.json({
       success: true,

@@ -19,6 +19,8 @@ import { VerifyEmail } from './pages/VerifyEmail';
 import { AcceptInvite } from './pages/AcceptInvite';
 import { AuthCallback } from './pages/AuthCallback';
 import { VerifyMagic } from './pages/VerifyMagic';
+import { ToolProfiles } from './pages/ToolProfiles';
+import { ToolProfileDetail } from './pages/ToolProfileDetail';
 
 function ProtectedLayout() {
   return (
@@ -51,6 +53,8 @@ function App() {
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="provenance" element={<ProvenanceView />} />
+        <Route path="tools" element={<ToolProfiles />} />
+        <Route path="tools/:profileId" element={<ToolProfileDetail />} />
         <Route path="events" element={<EventsSearch />} />
         <Route path="events/:eventId" element={<EventDetail />} />
         <Route path="events/:eventId/file" element={<EventFileDiff />} />

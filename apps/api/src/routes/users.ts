@@ -68,7 +68,7 @@ router.get('/users/:userId/profile', requireAdmin, async (c) => {
   const db = c.get('db');
   
   try {
-    // Get user details (customer may be via ownership or CustomerMember for invited users)
+    // Get user details (customer resolved via users.customer_id or ownership)
     const user = await db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: {

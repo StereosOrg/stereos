@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { users, customers, customerMembers, sessions } from '@stereos/shared/schema';
+import { users, customers, sessions } from '@stereos/shared/schema';
 import { eq, and, gt } from 'drizzle-orm';
 import { HonoMiddlewareContext, RequireAuthContext, RequireOnboardingContext, RequirePaymentContext } from '../types/context.js';
 
@@ -85,39 +85,26 @@ const customerColumns = {
   billing_status: true,
 } as const;
 
-// Owner first (Customer.user_id). Only check CustomerMember for invites (no owner customer).
+// Resolve the customer for a user: check users.customer_id first, fall back to customers.user_id (owner).
 export async function getCustomerForUser(c: HonoMiddlewareContext, userId: string) {
   const db = c.get('db');
-  const ownerCustomer = await db.query.customers.findFirst({
-    where: eq(customers.user_id, userId),
-    columns: customerColumns,
-  });
-  if (ownerCustomer) return ownerCustomer;
 
-  const member = await db.query.customerMembers.findFirst({
-    where: eq(customerMembers.user_id, userId),
+  // Check user's customer_id column (set for both owners and invited members)
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
     columns: { customer_id: true },
   });
-  if (!member) return null;
+  if (user?.customer_id) {
+    return db.query.customers.findFirst({
+      where: eq(customers.id, user.customer_id),
+      columns: customerColumns,
+    });
+  }
 
+  // Backwards compat: owner may not have customer_id set yet (pre-migration)
   return db.query.customers.findFirst({
-    where: eq(customers.id, member.customer_id),
-    columns: customerColumns,
-  });
-}
-
-// Only for invites: get member row to check member.onboarding_completed. Do not use for owners.
-export async function getMemberForUser(c: HonoMiddlewareContext, userId: string) {
-  const db = c.get('db');
-  const ownerCustomer = await db.query.customers.findFirst({
     where: eq(customers.user_id, userId),
-    columns: { id: true },
-  });
-  if (ownerCustomer) return null;
-
-  return db.query.customerMembers.findFirst({
-    where: eq(customerMembers.user_id, userId),
-    columns: { id: true, customer_id: true, onboarding_completed: true },
+    columns: customerColumns,
   });
 }
 
@@ -152,17 +139,21 @@ export async function requireAuth(c: HonoMiddlewareContext, next: () => Promise<
 // Middleware: Require onboarding completion
 export async function requireOnboarding(c: RequireOnboardingContext, next: () => Promise<void>) {
   const user = c.get('user');
-  
+
   if (!user) {
     return c.json({ error: 'Unauthorized', needsAuth: true }, 401);
   }
 
   const customer = await getCustomerForUser(c, user.id);
-  const member = await getMemberForUser(c, user.id);
-  const onboardingDone = member
-    ? member.onboarding_completed
-    : (customer?.onboarding_completed ?? false);
-  
+
+  // Check onboarding_completed from users table
+  const db = c.get('db');
+  const fullUser = await db.query.users.findFirst({
+    where: eq(users.id, user.id),
+    columns: { onboarding_completed: true },
+  });
+  const onboardingDone = fullUser?.onboarding_completed ?? false;
+
   // If no customer record or onboarding not completed
   if (!customer || !onboardingDone) {
     const baseUrl = getFrontendBaseUrl(c);

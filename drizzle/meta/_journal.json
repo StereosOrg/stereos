@@ -22,6 +22,20 @@
       "when": 1770558547129,
       "tag": "0002_perpetual_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1770670994636,
+      "tag": "0003_known_anita_blake",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1770681600000,
+      "tag": "0004_remove_customer_members",
+      "breakpoints": true
     }
   ]
 }

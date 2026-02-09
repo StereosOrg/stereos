@@ -26,6 +26,9 @@ export const users = pgTable('User', {
   image: text('image'),
   title: userTitleEnum('title').default('engineer'),
   role: userRoleEnum('role').default('user').notNull(),
+  customer_id: text('customer_id'),
+  onboarding_completed: boolean('onboarding_completed').default(false).notNull(),
+  onboarding_completed_at: timestamp('onboarding_completed_at', { withTimezone: true }),
   createdAt: timestamp('createdAt', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updatedAt', { withTimezone: true }).$onUpdate(() => new Date()),
 });
@@ -197,16 +200,72 @@ export const invites = pgTable('Invite', {
   emailIdx: index('Invite_email_idx').on(t.email),
 }));
 
-// Invited users join the same workspace (Customer) via membership; no separate Customer row
-export const customerMembers = pgTable('CustomerMember', {
+// ── Telemetry tables ─────────────────────────────────────────────────────
+
+export const toolProfiles = pgTable('ToolProfile', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
-  user_id: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
-  onboarding_completed: boolean('onboarding_completed').default(false).notNull(),
-  onboarding_completed_at: timestamp('onboarding_completed_at', { withTimezone: true }),
+  partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+  vendor: text('vendor').notNull(),
+  display_name: text('display_name').notNull(),
+  logo_url: text('logo_url'),
+  vendor_category: text('vendor_category'),
+  total_spans: integer('total_spans').default(0).notNull(),
+  total_traces: integer('total_traces').default(0).notNull(),
+  total_errors: integer('total_errors').default(0).notNull(),
+  first_seen_at: timestamp('first_seen_at', { withTimezone: true }),
+  last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
 }, (t) => ({
-  customerIdx: index('CustomerMember_customer_id_idx').on(t.customer_id),
-  userIdx: index('CustomerMember_user_id_idx').on(t.user_id),
+  customerVendorIdx: uniqueIndex('ToolProfile_customer_vendor_idx').on(t.customer_id, t.vendor),
+}));
+
+export const telemetrySpans = pgTable('TelemetrySpan', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+  tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
+  trace_id: text('trace_id').notNull(),
+  span_id: text('span_id').notNull(),
+  parent_span_id: text('parent_span_id'),
+  span_name: text('span_name').notNull(),
+  span_kind: text('span_kind'),
+  start_time: timestamp('start_time', { withTimezone: true }).notNull(),
+  end_time: timestamp('end_time', { withTimezone: true }),
+  duration_ms: integer('duration_ms'),
+  status_code: text('status_code'),
+  status_message: text('status_message'),
+  vendor: text('vendor').notNull(),
+  service_name: text('service_name'),
+  resource_attributes: jsonb('resource_attributes'),
+  span_attributes: jsonb('span_attributes'),
+  signal_type: text('signal_type').default('trace'),
+  ingested_at: timestamp('ingested_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  customerVendorTimeIdx: index('TelemetrySpan_customer_vendor_time_idx').on(t.customer_id, t.vendor, t.start_time),
+  traceIdx: index('TelemetrySpan_trace_id_idx').on(t.trace_id),
+  profileIdx: index('TelemetrySpan_tool_profile_id_idx').on(t.tool_profile_id),
+  startTimeIdx: index('TelemetrySpan_start_time_idx').on(t.start_time),
+}));
+
+export const telemetryLogs = pgTable('TelemetryLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
+  vendor: text('vendor').notNull(),
+  trace_id: text('trace_id'),
+  span_id: text('span_id'),
+  severity: text('severity'),
+  body: text('body'),
+  resource_attributes: jsonb('resource_attributes'),
+  log_attributes: jsonb('log_attributes'),
+  timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
+  ingested_at: timestamp('ingested_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  customerIdx: index('TelemetryLog_customer_id_idx').on(t.customer_id),
+  vendorIdx: index('TelemetryLog_vendor_idx').on(t.vendor),
+  timestampIdx: index('TelemetryLog_timestamp_idx').on(t.timestamp),
 }));
 
 // ── Relations ────────────────────────────────────────────────────────────
@@ -214,8 +273,8 @@ export const customerMembers = pgTable('CustomerMember', {
 export const usersRelations = relations(users, ({ many, one }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
-  customer: many(customers),
-  customerMembership: one(customerMembers),
+  ownedCustomers: many(customers),
+  customer: one(customers, { fields: [users.customer_id], references: [customers.id] }),
   provenanceEvents: many(provenanceEvents),
 }));
 
@@ -230,12 +289,8 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
   usageEvents: many(usageEvents),
   provenanceEvents: many(provenanceEvents),
   invites: many(invites),
-  members: many(customerMembers),
-}));
-
-export const customerMembersRelations = relations(customerMembers, ({ one }) => ({
-  customer: one(customers, { fields: [customerMembers.customer_id], references: [customers.id] }),
-  user: one(users, { fields: [customerMembers.user_id], references: [users.id] }),
+  toolProfiles: many(toolProfiles),
+  telemetrySpans: many(telemetrySpans),
 }));
 
 export const invitesRelations = relations(invites, ({ one }) => ({
@@ -247,6 +302,7 @@ export const partnersRelations = relations(partners, ({ many }) => ({
   customers: many(customers),
   usageEvents: many(usageEvents),
   provenanceEvents: many(provenanceEvents),
+  toolProfiles: many(toolProfiles),
 }));
 
 export const provenanceEventsRelations = relations(provenanceEvents, ({ one, many }) => ({
@@ -265,5 +321,26 @@ export const outcomesRelations = relations(outcomes, ({ one }) => ({
   event: one(provenanceEvents, { fields: [outcomes.event_id], references: [provenanceEvents.id] }),
 }));
 
+export const toolProfilesRelations = relations(toolProfiles, ({ one, many }) => ({
+  customer: one(customers, { fields: [toolProfiles.customer_id], references: [customers.id] }),
+  partner: one(partners, { fields: [toolProfiles.partner_id], references: [partners.id] }),
+  telemetrySpans: many(telemetrySpans),
+  telemetryLogs: many(telemetryLogs),
+}));
+
+export const telemetrySpansRelations = relations(telemetrySpans, ({ one }) => ({
+  customer: one(customers, { fields: [telemetrySpans.customer_id], references: [customers.id] }),
+  partner: one(partners, { fields: [telemetrySpans.partner_id], references: [partners.id] }),
+  toolProfile: one(toolProfiles, { fields: [telemetrySpans.tool_profile_id], references: [toolProfiles.id] }),
+}));
+
+export const telemetryLogsRelations = relations(telemetryLogs, ({ one }) => ({
+  customer: one(customers, { fields: [telemetryLogs.customer_id], references: [customers.id] }),
+  toolProfile: one(toolProfiles, { fields: [telemetryLogs.tool_profile_id], references: [toolProfiles.id] }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
+export type ToolProfile = typeof toolProfiles.$inferSelect;
+export type TelemetrySpan = typeof telemetrySpans.$inferSelect;
+export type TelemetryLog = typeof telemetryLogs.$inferSelect;

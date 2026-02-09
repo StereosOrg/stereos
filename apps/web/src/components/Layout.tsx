@@ -4,6 +4,7 @@ import {
   Home,
   GitBranch,
   Search,
+  Wrench,
   Users,
   Settings,
   LogOut,
@@ -30,6 +31,7 @@ export function Layout() {
     { path: '/', label: 'Home', icon: Home },
     { path: '/provenance', label: 'Provenance', icon: GitBranch },
     { path: '/events', label: 'Events', icon: Search },
+    { path: '/tools', label: 'Tools', icon: Wrench },
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];

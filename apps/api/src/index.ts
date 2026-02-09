@@ -18,6 +18,7 @@ import billingRouter from './routes/billing.js';
 import usersRouter from './routes/users.js';
 import onboardingRouter from './routes/onboarding.js';
 import invitesRouter from './routes/invites.js';
+import telemetryRouter from './routes/telemetry.js';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://localhost:5432/stereos';
 const db = createDb(connectionString);
@@ -48,6 +49,7 @@ app.route('/v1', billingRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);
+app.route('/v1', telemetryRouter);
 
 app.notFound((c) => c.json({ error: 'Not Found' }, 404));
 

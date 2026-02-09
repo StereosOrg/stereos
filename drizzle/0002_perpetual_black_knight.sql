@@ -1,0 +1,2 @@
+-- Migration already applied to database (snapshot existed but SQL file was missing)
+-- This is a no-op placeholder to allow the migration runner to proceed.
