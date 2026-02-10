@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, uuid, jsonb, integer, decimal, pgEnum, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, uuid, jsonb, integer, decimal, doublePrecision, pgEnum, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // ── Better Auth core tables ──────────────────────────────────────────────
@@ -268,6 +268,39 @@ export const telemetryLogs = pgTable('TelemetryLog', {
   timestampIdx: index('TelemetryLog_timestamp_idx').on(t.timestamp),
 }));
 
+export const telemetryMetrics = pgTable('TelemetryMetric', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+  tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
+  vendor: text('vendor').notNull(),
+  service_name: text('service_name'),
+  metric_name: text('metric_name').notNull(),
+  metric_type: text('metric_type').notNull(),
+  unit: text('unit'),
+  description: text('description'),
+  attributes: jsonb('attributes'),
+  value_double: doublePrecision('value_double'),
+  value_int: integer('value_int'),
+  count: integer('count'),
+  sum: doublePrecision('sum'),
+  min: doublePrecision('min'),
+  max: doublePrecision('max'),
+  bucket_counts: jsonb('bucket_counts'),
+  explicit_bounds: jsonb('explicit_bounds'),
+  quantile_values: jsonb('quantile_values'),
+  data_point: jsonb('data_point'),
+  start_time: timestamp('start_time', { withTimezone: true }),
+  time: timestamp('time', { withTimezone: true }).notNull(),
+  ingested_at: timestamp('ingested_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  customerIdx: index('TelemetryMetric_customer_id_idx').on(t.customer_id),
+  profileIdx: index('TelemetryMetric_tool_profile_id_idx').on(t.tool_profile_id),
+  vendorIdx: index('TelemetryMetric_vendor_idx').on(t.vendor),
+  nameIdx: index('TelemetryMetric_metric_name_idx').on(t.metric_name),
+  timeIdx: index('TelemetryMetric_time_idx').on(t.time),
+}));
+
 // ── Relations ────────────────────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many, one }) => ({
@@ -326,6 +359,7 @@ export const toolProfilesRelations = relations(toolProfiles, ({ one, many }) => 
   partner: one(partners, { fields: [toolProfiles.partner_id], references: [partners.id] }),
   telemetrySpans: many(telemetrySpans),
   telemetryLogs: many(telemetryLogs),
+  telemetryMetrics: many(telemetryMetrics),
 }));
 
 export const telemetrySpansRelations = relations(telemetrySpans, ({ one }) => ({
@@ -339,8 +373,15 @@ export const telemetryLogsRelations = relations(telemetryLogs, ({ one }) => ({
   toolProfile: one(toolProfiles, { fields: [telemetryLogs.tool_profile_id], references: [toolProfiles.id] }),
 }));
 
+export const telemetryMetricsRelations = relations(telemetryMetrics, ({ one }) => ({
+  customer: one(customers, { fields: [telemetryMetrics.customer_id], references: [customers.id] }),
+  partner: one(partners, { fields: [telemetryMetrics.partner_id], references: [partners.id] }),
+  toolProfile: one(toolProfiles, { fields: [telemetryMetrics.tool_profile_id], references: [toolProfiles.id] }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type ToolProfile = typeof toolProfiles.$inferSelect;
 export type TelemetrySpan = typeof telemetrySpans.$inferSelect;
 export type TelemetryLog = typeof telemetryLogs.$inferSelect;
+export type TelemetryMetric = typeof telemetryMetrics.$inferSelect;

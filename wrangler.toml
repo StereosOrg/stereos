@@ -30,14 +30,14 @@ head_sampling_rate = 1
 # Use the exact destination name(s) from Workers & Pages → Observability → Destinations.
 [observability.logs]
 enabled = true
-destinations = ["stereos-otlp"]
+destinations = ["stereos"]
 head_sampling_rate = 1
 persist = true
 invocation_logs = true
 
 [observability.traces]
 enabled = true
-destinations = ["stereos-otlp"]
+destinations = ["stereos"]
 persist = true
 head_sampling_rate = 1
 

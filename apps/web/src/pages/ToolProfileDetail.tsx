@@ -94,6 +94,15 @@ interface TopOperation {
   total_output_tokens: number;
 }
 
+interface CustomMetric {
+  metric_name: string;
+  metric_type: string;
+  unit: string | null;
+  last_value: number | null;
+  last_time: string;
+  datapoints: number;
+}
+
 interface LLMStats {
   modelUsage: ModelUsage[];
   dailyUsage: DailyUsage[];
@@ -106,6 +115,8 @@ interface LLMStats {
     distinctModels: number;
     avgDurationMs: number;
     avgTokensPerSec: number;
+    requestCount: number;
+    errorCount: number;
   };
 }
 
@@ -125,6 +136,12 @@ function formatDuration(ms: number): string {
   if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
   if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)}s`;
   return `${Math.round(ms)}ms`;
+}
+
+function formatMetricValue(value: number | null, unit?: string | null): string {
+  if (value == null || Number.isNaN(value)) return '—';
+  const pretty = Math.abs(value) >= 1000 ? value.toLocaleString() : value.toString();
+  return unit ? `${pretty} ${unit}` : pretty;
 }
 
 // Extract gen_ai.* attributes from span_attributes
@@ -256,11 +273,13 @@ function LLMProfileDetail({
   latency,
   buckets,
   spans,
+  metrics,
 }: {
   profile: ToolProfile;
   latency: Latency | undefined;
   buckets: TimelineBucket[];
   spans: Span[];
+  metrics: CustomMetric[];
 }) {
   const { profileId } = useParams<{ profileId: string }>();
 
@@ -282,8 +301,10 @@ function LLMProfileDetail({
   const hourlyTokens = llmData?.hourlyTokens || [];
   const modelLatency = llmData?.modelLatency || [];
   const topOperations = llmData?.topOperations || [];
-  const totals = llmData?.totals || { totalInputTokens: 0, totalOutputTokens: 0, distinctModels: 0, avgDurationMs: 0, avgTokensPerSec: 0 };
-  const errorRate = profile.total_spans > 0 ? ((profile.total_errors / profile.total_spans) * 100).toFixed(1) : '0.0';
+  const totals = llmData?.totals || { totalInputTokens: 0, totalOutputTokens: 0, distinctModels: 0, avgDurationMs: 0, avgTokensPerSec: 0, requestCount: 0, errorCount: 0 };
+  const requestCount = totals.requestCount || profile.total_spans;
+  const errorCount = totals.errorCount || profile.total_errors;
+  const errorRate = requestCount > 0 ? ((errorCount / requestCount) * 100).toFixed(1) : '0.0';
   const maxDailyRequests = Math.max(1, ...dailyUsage.map((d) => d.request_count));
   const maxHourlyTokens = Math.max(1, ...hourlyTokens.map((h) => Number(h.input_tokens) + Number(h.output_tokens)));
   const maxBucketCount = Math.max(1, ...buckets.map((b) => b.span_count));
@@ -344,7 +365,7 @@ function LLMProfileDetail({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px', marginBottom: '32px' }}>
         <div className="card" style={{ textAlign: 'center' }}>
           <Zap size={20} style={{ color: '#f59e0b', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>{profile.total_spans.toLocaleString()}</div>
+          <div style={{ fontSize: '28px', fontWeight: 800 }}>{requestCount.toLocaleString()}</div>
           <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Total Requests</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
@@ -744,6 +765,44 @@ function LLMProfileDetail({
         </div>
       )}
 
+      {/* Custom Metrics */}
+      <div className="card" style={{ marginBottom: '32px' }}>
+        <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+          <Layers size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+          Custom Metrics
+        </h3>
+        {metrics.length === 0 ? (
+          <p style={{ color: '#888' }}>No custom metrics recorded yet.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: '3px solid var(--border-color)', textAlign: 'left' }}>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Metric</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Type</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Last Value</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Points</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.map((metric) => (
+                  <tr key={`${metric.metric_name}-${metric.metric_type}`} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>{metric.metric_name}</td>
+                    <td style={{ padding: '8px 12px', color: '#888' }}>{metric.metric_type}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{formatMetricValue(metric.last_value, metric.unit)}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{metric.datapoints.toLocaleString()}</td>
+                    <td style={{ padding: '8px 12px', color: '#888', whiteSpace: 'nowrap' }}>
+                      {new Date(metric.last_time).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Recent LLM Traces - expanded with gen_ai attributes */}
       <div className="card">
         <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
@@ -786,11 +845,13 @@ function StandardProfileDetail({
   latency,
   buckets,
   spans,
+  metrics,
 }: {
   profile: ToolProfile;
   latency: Latency | undefined;
   buckets: TimelineBucket[];
   spans: Span[];
+  metrics: CustomMetric[];
 }) {
   const errorRate = profile.total_spans > 0 ? ((profile.total_errors / profile.total_spans) * 100).toFixed(1) : '0.0';
   const maxSpanCount = Math.max(1, ...buckets.map((b) => b.span_count));
@@ -910,6 +971,44 @@ function StandardProfileDetail({
         </div>
       )}
 
+      {/* Custom Metrics */}
+      <div className="card" style={{ marginBottom: '32px' }}>
+        <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+          <Layers size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+          Custom Metrics
+        </h3>
+        {metrics.length === 0 ? (
+          <p style={{ color: '#888' }}>No custom metrics recorded yet.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: '3px solid var(--border-color)', textAlign: 'left' }}>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Metric</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Type</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Last Value</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Points</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.map((metric) => (
+                  <tr key={`${metric.metric_name}-${metric.metric_type}`} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>{metric.metric_name}</td>
+                    <td style={{ padding: '8px 12px', color: '#888' }}>{metric.metric_type}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{formatMetricValue(metric.last_value, metric.unit)}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{metric.datapoints.toLocaleString()}</td>
+                    <td style={{ padding: '8px 12px', color: '#888', whiteSpace: 'nowrap' }}>
+                      {new Date(metric.last_time).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Recent Spans */}
       <div className="card">
         <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Recent Spans</h3>
@@ -1009,6 +1108,19 @@ export function ToolProfileDetail() {
     refetchInterval: 10_000,
   });
 
+  const { data: metricsData } = useQuery<{ metrics: CustomMetric[] }>({
+    queryKey: ['tool-profile-metrics', profileId],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/tool-profiles/${profileId}/metrics`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error('Failed to fetch metrics');
+      return res.json();
+    },
+    refetchInterval: 10_000,
+  });
+
   if (profileLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '48px' }}>
@@ -1030,6 +1142,7 @@ export function ToolProfileDetail() {
   const latency = profileData?.latency;
   const buckets = timelineData?.buckets || [];
   const spans = spansData?.spans || [];
+  const metrics = metricsData?.metrics || [];
 
   if (!profile) {
     return (
@@ -1052,6 +1165,7 @@ export function ToolProfileDetail() {
         latency={latency}
         buckets={buckets}
         spans={spans}
+        metrics={metrics}
       />
     );
   }
@@ -1062,6 +1176,7 @@ export function ToolProfileDetail() {
       latency={latency}
       buckets={buckets}
       spans={spans}
+      metrics={metrics}
     />
   );
 }

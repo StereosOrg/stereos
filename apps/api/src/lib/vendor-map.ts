@@ -149,6 +149,15 @@ export function canonicalizeVendor(attrs: Record<string, string>): CanonicalVend
   };
 }
 
+export function isLLMTool(attrs: Record<string, string>, vendor?: CanonicalVendor): boolean {
+  if (vendor?.category === 'llm') return true;
+  const genAiSystem = (attrs['gen_ai.system'] || '').toLowerCase();
+  if (genAiSystem) return true;
+  const reqModel = (attrs['gen_ai.request.model'] || '').toLowerCase();
+  const respModel = (attrs['gen_ai.response.model'] || '').toLowerCase();
+  return Boolean(reqModel || respModel);
+}
+
 /**
  * Convert OTEL's [{key, value: {stringValue, intValue, ...}}] format
  * to a plain Record<string, string>.
