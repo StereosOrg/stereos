@@ -238,7 +238,7 @@ router.get('/dashboard', sessionOrTokenAuth, async (c) => {
     tool_profile_id: null as string | null,
   }));
   const spansAsEvents = recentSpans.map((s) => ({
-    id: `span-${s.id}`,
+    id: s.id,
     type: 'span' as const,
     intent: s.span_name,
     actor_id: s.vendor,
@@ -332,7 +332,7 @@ router.get('/events/search', sessionOrTokenAuth, async (c) => {
     tool_profile_id: null as string | null,
   }));
   const spansAsEvents = spanRows.map((s) => ({
-    id: `span-${s.id}`,
+    id: s.id,
     type: 'span' as const,
     intent: s.span_name,
     actor_id: s.vendor,

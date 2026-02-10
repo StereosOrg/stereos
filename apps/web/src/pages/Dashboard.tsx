@@ -1,9 +1,19 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Activity, GitCommit, Users, Terminal } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { ToolIcon } from '../components/ToolIcon';
+import { VendorIcon } from '../components/ToolIcon';
 import { StereosLogo } from '../components/StereosLogo';
+
+/** Vendor slug for event logo (VENDOR_LOGOS / VendorIcon). Spans use actor_id; provenance maps e.g. cursor-v1 -> cursor. */
+function eventVendorSlug(event: DashboardEvent): string {
+  if (event.type === 'span') return event.actor_id || event.tool || '?';
+  const a = (event.actor_id || '').toLowerCase();
+  if (a.includes('cursor')) return 'cursor';
+  if (a.includes('codex')) return 'codex';
+  return event.actor_id || event.tool || '?';
+}
 
 interface DashboardEvent {
   id: string;
@@ -22,6 +32,41 @@ interface DashboardStats {
   total_commits: number;
   active_agents: number;
   recent_events: DashboardEvent[];
+}
+
+function EventUserAvatar({ user }: { user: DashboardEvent['user'] }) {
+  const [imgError, setImgError] = useState(false);
+  const showImg = user?.image && !imgError;
+  const initial = (user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?').toUpperCase();
+  return (
+    <div
+      style={{
+        width: '40px',
+        height: '40px',
+        borderRadius: '8px',
+        background: 'var(--dark)',
+        border: '2px solid var(--border-color)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}
+    >
+      {showImg ? (
+        <img
+          src={user!.image!}
+          alt=""
+          onError={() => setImgError(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        <span style={{ fontSize: '16px', fontWeight: 700, color: 'white' }}>
+          {initial}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function Dashboard() {
@@ -154,32 +199,7 @@ export function Dashboard() {
                     e.currentTarget.style.background = 'var(--bg-white)';
                   }}
                 >
-                  <div
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '8px',
-                      background: 'var(--dark)',
-                      border: '2px solid var(--border-color)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      overflow: 'hidden',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {event.user?.image ? (
-                      <img
-                        src={event.user.image}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: '16px', fontWeight: 700, color: 'white' }}>
-                        {event.user?.name?.charAt(0) || event.user?.email?.charAt(0)?.toUpperCase() || '?'}
-                      </span>
-                    )}
-                  </div>
+                  <EventUserAvatar user={event.user} />
                   <div
                     style={{
                       width: '44px',
@@ -193,7 +213,11 @@ export function Dashboard() {
                       flexShrink: 0,
                     }}
                   >
-                    <ToolIcon actorId={event.actor_id} tool={event.tool} size={24} />
+                    <VendorIcon
+                      vendor={eventVendorSlug(event)}
+                      displayName={event.tool || event.actor_id}
+                      size={24}
+                    />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: '16px', fontWeight: 600, lineHeight: 1.3 }}>

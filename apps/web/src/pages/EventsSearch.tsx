@@ -2,7 +2,48 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { ToolIcon } from '../components/ToolIcon';
+import { VendorIcon } from '../components/ToolIcon';
+
+function eventVendorSlug(event: { type?: string; actor_id?: string; tool?: string }): string {
+  if (event.type === 'span') return event.actor_id || event.tool || '?';
+  const a = (event.actor_id || '').toLowerCase();
+  if (a.includes('cursor')) return 'cursor';
+  if (a.includes('codex')) return 'codex';
+  return event.actor_id || event.tool || '?';
+}
+
+function EventUserAvatar({ user }: { user: { name?: string | null; image?: string | null; email?: string } | null }) {
+  const [imgError, setImgError] = useState(false);
+  const showImg = user?.image && !imgError;
+  const initial = (user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?').toUpperCase();
+  return (
+    <div
+      style={{
+        width: '40px',
+        height: '40px',
+        borderRadius: '8px',
+        background: 'var(--dark)',
+        border: '2px solid var(--border-color)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}
+    >
+      {showImg ? (
+        <img
+          src={user!.image!}
+          alt=""
+          onError={() => setImgError(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        <span style={{ fontSize: '16px', fontWeight: 700, color: 'white' }}>{initial}</span>
+      )}
+    </div>
+  );
+}
 
 export function EventsSearch() {
   const [filters, setFilters] = useState({
@@ -144,45 +185,7 @@ export function EventsSearch() {
                     e.currentTarget.style.background = 'var(--bg-white)';
                   }}
                 >
-                  {/* User avatar (creator) */}
-                  <div
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '8px',
-                      background: 'var(--dark)',
-                      border: '2px solid var(--border-color)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      overflow: 'hidden',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {event.user?.image ? (
-                      <img
-                        src={event.user.image}
-                        alt=""
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                        }}
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          fontSize: '16px',
-                          fontWeight: 700,
-                          color: 'white',
-                        }}
-                      >
-                        {event.user?.name?.charAt(0) ||
-                          event.user?.email?.charAt(0)?.toUpperCase() ||
-                          '?'}
-                      </span>
-                    )}
-                  </div>
+                  <EventUserAvatar user={event.user} />
                   <div
                     style={{
                       width: '48px',
@@ -197,9 +200,9 @@ export function EventsSearch() {
                       flexShrink: 0,
                     }}
                   >
-                    <ToolIcon
-                      actorId={event.actor_id}
-                      tool={event.tool}
+                    <VendorIcon
+                      vendor={eventVendorSlug(event)}
+                      displayName={event.tool || event.actor_id}
                       size={28}
                     />
                   </div>
