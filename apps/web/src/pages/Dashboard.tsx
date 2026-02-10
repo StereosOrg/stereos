@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Activity, GitCommit, Users, Terminal } from 'lucide-react';
@@ -34,39 +33,35 @@ interface DashboardStats {
   recent_events: DashboardEvent[];
 }
 
-/** Avatar uses the user `image` field URL from the API. */
+/** Same pattern as UserProfile: use user.image URL for avatar, else initial. */
 function EventUserAvatar({ user }: { user: DashboardEvent['user'] }) {
-  const [imgError, setImgError] = useState(false);
-  const imageUrl = user?.image ?? null;
-  const showImg = imageUrl && !imgError;
-  const initial = (user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?').toUpperCase();
+  const initial = user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?';
   return (
     <div
       style={{
         width: '40px',
         height: '40px',
         borderRadius: '8px',
-        background: 'var(--dark)',
+        background: user?.image ? 'transparent' : 'var(--dark)',
         border: '2px solid var(--border-color)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        fontSize: '16px',
+        fontWeight: 700,
+        color: 'white',
         overflow: 'hidden',
         flexShrink: 0,
       }}
     >
-      {showImg ? (
+      {user?.image ? (
         <img
-          src={imageUrl}
+          src={user.image}
           alt=""
-          referrerPolicy="no-referrer"
-          onError={() => setImgError(true)}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (
-        <span style={{ fontSize: '16px', fontWeight: 700, color: 'white' }}>
-          {initial}
-        </span>
+        initial.toUpperCase()
       )}
     </div>
   );
