@@ -11,6 +11,10 @@ import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
+function toUserAttribution(u: { id: string; name: string | null; image: string | null; email: string }) {
+  return { id: u.id, name: u.name ?? null, image: u.image ?? null, email: u.email };
+}
+
 // Event ingestion schemas
 const agentActionSchema = z.object({
   event_type: z.literal('agent_action'),
@@ -46,7 +50,6 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
   const apiToken = c.get('apiToken') as ApiTokenPayload;
   const db = c.get('db');
   const customerId = apiToken.customer.id;
-  const partnerId = apiToken.customer.partner.id;
 
   try {
     if (data.event_type === 'agent_action') {
@@ -58,7 +61,6 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
         .insert(provenanceEvents)
         .values({
           customer_id: customerId,
-          partner_id: partnerId,
           user_id: userId,
           actor_type: data.actor_type,
           actor_id: data.actor_id,
@@ -90,7 +92,7 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
 
       // Record usage in DB and report to Stripe meter "provenance_events" (1 unit per provenance event)
       const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
-      await trackUsage(db, customerId, partnerId, 'agent_action', 1, {
+      await trackUsage(db, customerId, 'agent_action', 1, {
         event_id: event.id,
         actor_id: data.actor_id,
         tool: data.tool,
@@ -109,7 +111,7 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
         .returning();
 
       // Record outcome in usage table only (no Stripe meter — provenance_events meter is for new provenance events only)
-      await trackUsage(db, customerId, partnerId, 'outcome', 1, {
+      await trackUsage(db, customerId, 'outcome', 1, {
         status: data.status,
       });
 
@@ -260,7 +262,7 @@ router.get('/dashboard', sessionOrTokenAuth, async (c) => {
         columns: { id: true, name: true, image: true, email: true },
       })
     : [];
-  const userMap = Object.fromEntries(userList.map((u: { id: string }) => [u.id, u]));
+  const userMap = Object.fromEntries(userList.map((u) => [u.id, toUserAttribution(u)]));
 
   const recent_events = merged.map((event) => ({
     ...event,
@@ -297,7 +299,8 @@ router.get('/events/search', sessionOrTokenAuth, async (c) => {
   if (endDate) provConditions.push(sql`${provenanceEvents.timestamp} <= ${new Date(endDate)}`);
 
   const spanConditions = [eq(telemetrySpans.customer_id, customerId)];
-  if (actorId || tool) spanConditions.push(eq(telemetrySpans.vendor, actorId || tool));
+  const vendorFilter = actorId || tool;
+  if (vendorFilter) spanConditions.push(eq(telemetrySpans.vendor, vendorFilter));
   if (intent) spanConditions.push(sql`${telemetrySpans.span_name} ILIKE ${`%${intent}%`}`);
   if (startDate) spanConditions.push(gte(telemetrySpans.start_time, new Date(startDate)));
   if (endDate) spanConditions.push(lte(telemetrySpans.start_time, new Date(endDate)));
@@ -368,7 +371,7 @@ router.get('/events/search', sessionOrTokenAuth, async (c) => {
         columns: { id: true, name: true, image: true, email: true },
       })
     : [];
-  const userMap = Object.fromEntries(userList.map((u: { id: string }) => [u.id, u]));
+  const userMap = Object.fromEntries(userList.map((u) => [u.id, toUserAttribution(u)]));
 
   const eventsWithUser = paginated.map((event) => ({
     ...event,

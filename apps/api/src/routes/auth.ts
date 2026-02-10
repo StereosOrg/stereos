@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { partners, customers, apiTokens, verifications, users, sessions, accounts } from '@stereos/shared/schema';
+import { customers, apiTokens, verifications, users, sessions, accounts } from '@stereos/shared/schema';
 import { newSessionToken, newUuid, newCustomerId, newApiToken } from '@stereos/shared/ids';
 import { eq, and, gt } from 'drizzle-orm';
 import { createStripeCustomer } from '../lib/stripe.js';
@@ -67,55 +67,13 @@ router.on(['POST', 'GET'], '/auth/*', async (c) => {
   return c.get('auth').handler(c.req.raw);
 });
 
-// Partner registration
-router.post('/partners/register', async (c) => {
-  const body = await c.req.json();
-  const { name, partner_id, email } = body;
-  const db = c.get('db');
-
-  try {
-    const secretKey = newUuid();
-
-    const [partner] = await db
-      .insert(partners)
-      .values({
-        name,
-        partner_id,
-        secret_key: secretKey,
-      })
-      .returning();
-
-    return c.json({ 
-      success: true, 
-      partner: {
-        id: partner.id,
-        name: partner.name,
-        partner_id: partner.partner_id,
-      },
-      secret_key: secretKey, // Only shown once
-    }, 201);
-  } catch (error) {
-    console.error('Partner registration error:', error);
-    return c.json({ error: 'Failed to register partner' }, 500);
-  }
-});
-
 // Customer registration (after Better Auth signup)
 router.post('/customers/register', async (c) => {
   const body = await c.req.json();
-  const { user_id, partner_id, email, name } = body;
+  const { user_id, email, name } = body;
   const db = c.get('db');
 
   try {
-    // Get partner
-    const partner = await db.query.partners.findFirst({
-      where: eq(partners.partner_id, partner_id),
-    });
-
-    if (!partner) {
-      return c.json({ error: 'Invalid partner ID' }, 400);
-    }
-
     const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
     const stripeCustomerId = await createStripeCustomer(email, name, stripeKey);
 
@@ -125,7 +83,6 @@ router.post('/customers/register', async (c) => {
       .insert(customers)
       .values({
         user_id,
-        partner_id: partner.id,
         customer_id: customerId,
         customer_stripe_id: stripeCustomerId,
         billing_status: 'trial',

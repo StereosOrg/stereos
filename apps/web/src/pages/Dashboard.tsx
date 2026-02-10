@@ -57,6 +57,7 @@ function EventUserAvatar({ user }: { user: DashboardEvent['user'] }) {
         <img
           src={user!.image!}
           alt=""
+          referrerPolicy="no-referrer"
           onError={() => setImgError(true)}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />

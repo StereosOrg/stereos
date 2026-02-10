@@ -19,7 +19,7 @@ export async function validateApiToken(c: { get: (k: 'db') => ReturnType<typeof 
 
   const customer = await db.query.customers.findFirst({
     where: eq(customers.id, apiToken.customer_id),
-    columns: { id: true, partner_id: true, user_id: true, billing_status: true },
+    columns: { id: true, user_id: true, billing_status: true },
   });
 
   if (!customer) {
@@ -38,7 +38,6 @@ export async function validateApiToken(c: { get: (k: 'db') => ReturnType<typeof 
     user_id: userId,
     customer: {
       ...customer,
-      partner: { id: customer.partner_id },
       user: { id: customer.user_id },
     },
   };
@@ -90,7 +89,6 @@ export const sessionOrTokenAuth = async (c: any, next: any) => {
     user_id: user.id,
     customer: {
       id: customer.id,
-      partner: { id: customer.partner_id! },
       user_id: user.id,
       billing_status: customer.billing_status,
     },
@@ -98,4 +96,4 @@ export const sessionOrTokenAuth = async (c: any, next: any) => {
   await next();
 };
 
-export type ApiTokenPayload = { user_id?: string | null; customer: { id: string; partner: { id: string }; user_id?: string; billing_status: string }; [k: string]: unknown };
+export type ApiTokenPayload = { user_id?: string | null; customer: { id: string; user_id?: string; billing_status: string }; [k: string]: unknown };

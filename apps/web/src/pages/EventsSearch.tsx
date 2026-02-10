@@ -35,6 +35,7 @@ function EventUserAvatar({ user }: { user: { name?: string | null; image?: strin
         <img
           src={user!.image!}
           alt=""
+          referrerPolicy="no-referrer"
           onError={() => setImgError(true)}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />

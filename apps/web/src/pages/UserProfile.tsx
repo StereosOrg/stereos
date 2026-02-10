@@ -18,10 +18,6 @@ interface UserProfile {
       id: string;
       customer_id: string;
       billing_status: string;
-      partner: {
-        name: string;
-        partner_id: string;
-      };
     } | null;
   };
   usage: {

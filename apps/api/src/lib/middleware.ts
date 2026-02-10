@@ -76,7 +76,6 @@ export async function getCurrentUser(c: HonoMiddlewareContext) {
 
 const customerColumns = {
   id: true,
-  partner_id: true,
   company_name: true,
   billing_email: true,
   logo_url: true,

@@ -25,7 +25,6 @@ router.post('/traces', authMiddleware, async (c) => {
   const db = c.get('db');
 
   const customerId = apiToken.customer.id;
-  const partnerId = apiToken.customer.partner.id;
   const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
 
   let body: any;
@@ -80,7 +79,6 @@ router.post('/traces', authMiddleware, async (c) => {
 
         spanRows.push({
           customer_id: customerId,
-          partner_id: partnerId,
           user_id: userId,
           trace_id: traceId,
           span_id: span.spanId || '',
@@ -108,7 +106,6 @@ router.post('/traces', authMiddleware, async (c) => {
       .insert(toolProfiles)
       .values({
         customer_id: customerId,
-        partner_id: partnerId,
         vendor: vendor.slug,
         display_name: vendor.displayName,
         vendor_category: vendor.category,
@@ -148,7 +145,7 @@ router.post('/traces', authMiddleware, async (c) => {
   // Track usage
   const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
   if (totalInserted > 0) {
-    await trackUsage(db, customerId, partnerId, 'telemetry_span', totalInserted, {
+    await trackUsage(db, customerId, 'telemetry_span', totalInserted, {
       trace_count: traceIds.size,
     }, stripeKey);
   }
@@ -254,7 +251,6 @@ router.post('/logs', authMiddleware, async (c) => {
 
           spanRows.push({
             customer_id: customerId,
-            partner_id: apiToken.customer.partner.id,
             user_id: userId,
             trace_id: traceIdRaw,
             span_id: spanIdRaw,
@@ -284,7 +280,6 @@ router.post('/logs', authMiddleware, async (c) => {
       .insert(toolProfiles)
       .values({
         customer_id: customerId,
-        partner_id: apiToken.customer.partner.id,
         vendor: vendor.slug,
         display_name: vendor.displayName,
         vendor_category: vendor.category,
@@ -334,7 +329,6 @@ router.post('/metrics', authMiddleware, async (c) => {
   const db = c.get('db');
 
   const customerId = apiToken.customer.id;
-  const partnerId = apiToken.customer.partner.id;
   const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
 
   let body: any;
@@ -361,7 +355,6 @@ router.post('/metrics', authMiddleware, async (c) => {
       .insert(toolProfiles)
       .values({
         customer_id: customerId,
-        partner_id: partnerId,
         vendor: vendor.slug,
         display_name: vendor.displayName,
         vendor_category: vendor.category,
@@ -403,7 +396,6 @@ router.post('/metrics', authMiddleware, async (c) => {
 
           metricRows.push({
             customer_id: customerId,
-            partner_id: partnerId,
             user_id: userId,
             tool_profile_id: profile.id,
             vendor: vendor.slug,
@@ -590,7 +582,7 @@ router.get('/tool-profiles/:profileId/metrics', sessionOrTokenAuth, async (c) =>
 
   const rows: MetricRow[] = Array.isArray(metricsResult)
     ? (metricsResult as MetricRow[])
-    : ((metricsResult as { rows?: MetricRow[] })?.rows ?? []);
+    : ((metricsResult as unknown as { rows?: MetricRow[] })?.rows ?? []);
 
   const metricMap = new Map<string, { metric_name: string; metric_type: string; unit: string | null; last_value: number | null; last_time: string; datapoints: number }>();
 
@@ -759,7 +751,7 @@ router.get('/tool-profiles/:profileId/llm-stats', sessionOrTokenAuth, async (c) 
 
   const metricsRows: MetricRow[] = Array.isArray(metricsResult)
     ? (metricsResult as MetricRow[])
-    : ((metricsResult as { rows?: MetricRow[] })?.rows ?? []);
+    : ((metricsResult as unknown as { rows?: MetricRow[] })?.rows ?? []);
 
   if (metricsRows.length > 0) {
     const modelMap = new Map<string, { request_count: number; error_count: number; total_input_tokens: number; total_output_tokens: number; latency_sum: number; latency_count: number; last_used: string | null }>();

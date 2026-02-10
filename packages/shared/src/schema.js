@@ -62,19 +62,9 @@ export const verificationTokens = pgTable('VerificationToken', {
     compoundKey: primaryKey({ columns: [t.identifier, t.token] }),
 }));
 // ── Custom tables ────────────────────────────────────────────────────────
-export const partners = pgTable('Partner', {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    name: text('name').notNull(),
-    partner_id: text('partner_id').unique().notNull(),
-    secret_key: text('secret_key').unique().notNull(),
-    stripe_account_id: text('stripe_account_id'),
-    created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-    updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
-});
 export const customers = pgTable('Customer', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     user_id: text('user_id').unique().notNull().references(() => users.id, { onDelete: 'cascade' }),
-    partner_id: text('partner_id').notNull().references(() => partners.id),
     customer_id: text('customer_id').unique().notNull(),
     customer_stripe_id: text('customer_stripe_id').unique().notNull(),
     company_name: text('company_name'),
@@ -104,7 +94,6 @@ export const apiTokens = pgTable('ApiToken', {
 export const usageEvents = pgTable('UsageEvent', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
-    partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
     event_type: text('event_type').notNull(),
     idempotency_key: text('idempotency_key').notNull(),
     quantity: integer('quantity').default(1).notNull(),
@@ -114,7 +103,6 @@ export const usageEvents = pgTable('UsageEvent', {
     timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
     customerIdx: index('UsageEvent_customer_id_idx').on(t.customer_id),
-    partnerIdx: index('UsageEvent_partner_id_idx').on(t.partner_id),
     timeIdx: index('UsageEvent_created_at_idx').on(t.timestamp),
     idempotencyIdx: uniqueIndex('UsageEvent_idempotency_idx').on(t.customer_id, t.idempotency_key),
 }));
@@ -122,7 +110,6 @@ export const usageEvents = pgTable('UsageEvent', {
 export const provenanceEvents = pgTable('ProvenanceEvent', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
-    partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
     user_id: text('user_id').references(() => users.id, { onDelete: 'cascade' }), // Individual user who triggered the event
     title: text('title'), // User's title at time of event
     actor_type: text('actor_type').notNull(), // 'agent'
@@ -135,7 +122,6 @@ export const provenanceEvents = pgTable('ProvenanceEvent', {
     event_hash: text('event_hash'), // Optional signing hash
 }, (t) => ({
     customerIdx: index('ProvenanceEvent_customer_id_idx').on(t.customer_id),
-    partnerIdx: index('ProvenanceEvent_partner_id_idx').on(t.partner_id),
     userIdx: index('ProvenanceEvent_user_id_idx').on(t.user_id),
     titleIdx: index('ProvenanceEvent_title_idx').on(t.title),
     timeIdx: index('ProvenanceEvent_timestamp_idx').on(t.timestamp),
@@ -202,7 +188,6 @@ export const apiTokensRelations = relations(apiTokens, ({ one }) => ({
 }));
 export const customersRelations = relations(customers, ({ one, many }) => ({
     user: one(users, { fields: [customers.user_id], references: [users.id] }),
-    partner: one(partners, { fields: [customers.partner_id], references: [partners.id] }),
     apiTokens: many(apiTokens),
     usageEvents: many(usageEvents),
     provenanceEvents: many(provenanceEvents),
@@ -217,14 +202,8 @@ export const invitesRelations = relations(invites, ({ one }) => ({
     customer: one(customers, { fields: [invites.customer_id], references: [customers.id] }),
     invitedBy: one(users, { fields: [invites.invited_by_user_id], references: [users.id] }),
 }));
-export const partnersRelations = relations(partners, ({ many }) => ({
-    customers: many(customers),
-    usageEvents: many(usageEvents),
-    provenanceEvents: many(provenanceEvents),
-}));
 export const provenanceEventsRelations = relations(provenanceEvents, ({ one, many }) => ({
     customer: one(customers, { fields: [provenanceEvents.customer_id], references: [customers.id] }),
-    partner: one(partners, { fields: [provenanceEvents.partner_id], references: [partners.id] }),
     user: one(users, { fields: [provenanceEvents.user_id], references: [users.id] }),
     artifacts: many(artifactLinks),
     outcomes: many(outcomes),

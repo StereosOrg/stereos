@@ -36,22 +36,19 @@ router.post('/invites', requireAdmin, zValidator('json', inviteCreateSchema), as
 
   const customer = await db.query.customers.findFirst({
     where: eq(customers.user_id, adminUser.id),
-    columns: { id: true, partner_id: true, company_name: true },
+    columns: { id: true, user_id: true, company_name: true },
   });
   if (!customer) return c.json({ error: 'Customer not found' }, 404);
 
   const existingUser = await db.query.users.findFirst({
     where: eq(users.email, email.toLowerCase()),
-    columns: { id: true },
+    columns: { id: true, customer_id: true },
   });
-  if (existingUser) {
-    const existingCustomer = await db.query.customers.findFirst({
-      where: eq(customers.user_id, existingUser.id),
-      columns: { partner_id: true },
-    });
-    if (existingCustomer?.partner_id === customer.partner_id) {
-      return c.json({ error: 'User is already in this workspace' }, 400);
-    }
+  if (existingUser?.customer_id === customer.id) {
+    return c.json({ error: 'User is already in this workspace' }, 400);
+  }
+  if (existingUser && customer.user_id === existingUser.id) {
+    return c.json({ error: 'User is already in this workspace' }, 400);
   }
 
   const token = newInviteToken();

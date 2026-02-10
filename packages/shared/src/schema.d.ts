@@ -657,132 +657,6 @@ export declare const verificationTokens: import("drizzle-orm/pg-core").PgTableWi
     };
     dialect: "pg";
 }>;
-export declare const partners: import("drizzle-orm/pg-core").PgTableWithColumns<{
-    name: "Partner";
-    schema: undefined;
-    columns: {
-        id: import("drizzle-orm/pg-core").PgColumn<{
-            name: "id";
-            tableName: "Partner";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: true;
-            hasDefault: true;
-            isPrimaryKey: true;
-            isAutoincrement: false;
-            hasRuntimeDefault: true;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        name: import("drizzle-orm/pg-core").PgColumn<{
-            name: "name";
-            tableName: "Partner";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: true;
-            hasDefault: false;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        partner_id: import("drizzle-orm/pg-core").PgColumn<{
-            name: "partner_id";
-            tableName: "Partner";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: true;
-            hasDefault: false;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        secret_key: import("drizzle-orm/pg-core").PgColumn<{
-            name: "secret_key";
-            tableName: "Partner";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: true;
-            hasDefault: false;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        stripe_account_id: import("drizzle-orm/pg-core").PgColumn<{
-            name: "stripe_account_id";
-            tableName: "Partner";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: false;
-            hasDefault: false;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        created_at: import("drizzle-orm/pg-core").PgColumn<{
-            name: "created_at";
-            tableName: "Partner";
-            dataType: "date";
-            columnType: "PgTimestamp";
-            data: Date;
-            driverParam: string;
-            notNull: false;
-            hasDefault: true;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: undefined;
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        updated_at: import("drizzle-orm/pg-core").PgColumn<{
-            name: "updated_at";
-            tableName: "Partner";
-            dataType: "date";
-            columnType: "PgTimestamp";
-            data: Date;
-            driverParam: string;
-            notNull: false;
-            hasDefault: true;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: undefined;
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-    };
-    dialect: "pg";
-}>;
 export declare const customers: import("drizzle-orm/pg-core").PgTableWithColumns<{
     name: "Customer";
     schema: undefined;
@@ -806,23 +680,6 @@ export declare const customers: import("drizzle-orm/pg-core").PgTableWithColumns
         }, {}, {}>;
         user_id: import("drizzle-orm/pg-core").PgColumn<{
             name: "user_id";
-            tableName: "Customer";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: true;
-            hasDefault: false;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        partner_id: import("drizzle-orm/pg-core").PgColumn<{
-            name: "partner_id";
             tableName: "Customer";
             dataType: "string";
             columnType: "PgText";
@@ -1269,23 +1126,6 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        partner_id: import("drizzle-orm/pg-core").PgColumn<{
-            name: "partner_id";
-            tableName: "UsageEvent";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: true;
-            hasDefault: false;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
         event_type: import("drizzle-orm/pg-core").PgColumn<{
             name: "event_type";
             tableName: "UsageEvent";
@@ -1431,23 +1271,6 @@ export declare const provenanceEvents: import("drizzle-orm/pg-core").PgTableWith
         }, {}, {}>;
         customer_id: import("drizzle-orm/pg-core").PgColumn<{
             name: "customer_id";
-            tableName: "ProvenanceEvent";
-            dataType: "string";
-            columnType: "PgText";
-            data: string;
-            driverParam: string;
-            notNull: true;
-            hasDefault: false;
-            isPrimaryKey: false;
-            isAutoincrement: false;
-            hasRuntimeDefault: false;
-            enumValues: [string, ...string[]];
-            baseColumn: never;
-            identity: undefined;
-            generated: undefined;
-        }, {}, {}>;
-        partner_id: import("drizzle-orm/pg-core").PgColumn<{
-            name: "partner_id";
             tableName: "ProvenanceEvent";
             dataType: "string";
             columnType: "PgText";
@@ -2127,7 +1950,6 @@ export declare const apiTokensRelations: import("drizzle-orm").Relations<"ApiTok
 }>;
 export declare const customersRelations: import("drizzle-orm").Relations<"Customer", {
     user: import("drizzle-orm").One<"User", true>;
-    partner: import("drizzle-orm").One<"Partner", true>;
     apiTokens: import("drizzle-orm").Many<"ApiToken">;
     usageEvents: import("drizzle-orm").Many<"UsageEvent">;
     provenanceEvents: import("drizzle-orm").Many<"ProvenanceEvent">;
@@ -2142,14 +1964,8 @@ export declare const invitesRelations: import("drizzle-orm").Relations<"Invite",
     customer: import("drizzle-orm").One<"Customer", true>;
     invitedBy: import("drizzle-orm").One<"User", true>;
 }>;
-export declare const partnersRelations: import("drizzle-orm").Relations<"Partner", {
-    customers: import("drizzle-orm").Many<"Customer">;
-    usageEvents: import("drizzle-orm").Many<"UsageEvent">;
-    provenanceEvents: import("drizzle-orm").Many<"ProvenanceEvent">;
-}>;
 export declare const provenanceEventsRelations: import("drizzle-orm").Relations<"ProvenanceEvent", {
     customer: import("drizzle-orm").One<"Customer", true>;
-    partner: import("drizzle-orm").One<"Partner", true>;
     user: import("drizzle-orm").One<"User", false>;
     artifacts: import("drizzle-orm").Many<"ArtifactLink">;
     outcomes: import("drizzle-orm").Many<"Outcome">;

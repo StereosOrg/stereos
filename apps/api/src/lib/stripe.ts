@@ -76,7 +76,6 @@ export async function createStripeMeterEvent(
 export async function trackUsage(
   db: Database,
   customerId: string,
-  partnerId: string,
   eventType: string,
   quantity: number = 1,
   metadata?: Record<string, unknown>,
@@ -88,7 +87,6 @@ export async function trackUsage(
 
   await db.insert(usageEvents).values({
     customer_id: customerId,
-    partner_id: partnerId,
     event_type: eventType,
     idempotency_key: idempotencyKey,
     quantity,

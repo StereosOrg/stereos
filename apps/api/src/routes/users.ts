@@ -80,11 +80,7 @@ router.get('/users/:userId/profile', requireAdmin, async (c) => {
         image: true,
       },
       with: {
-        customer: {
-          with: {
-            partner: true,
-          },
-        },
+        customer: true,
       },
     });
 
@@ -92,7 +88,7 @@ router.get('/users/:userId/profile', requireAdmin, async (c) => {
       return c.json({ error: 'User not found' }, 404);
     }
 
-    const workspaceCustomer = user.customer?.[0] ?? (await getCustomerForUser(c as unknown as import('../types/context.js').HonoContext, userId));
+    const workspaceCustomer = user.customer ?? (await getCustomerForUser(c as unknown as import('../types/context.js').HonoContext, userId));
     const customerId = workspaceCustomer?.id ?? '';
     
     // Get usage statistics
@@ -292,11 +288,7 @@ router.get('/me', requireAuth, async (c) => {
         image: true,
       },
       with: {
-        customer: {
-          with: {
-            partner: true,
-          },
-        },
+        customer: true,
       },
     });
     

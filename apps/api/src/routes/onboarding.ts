@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { users, customers, partners } from '@stereos/shared/schema';
+import { users, customers } from '@stereos/shared/schema';
 import { newUuid, newCustomerId } from '@stereos/shared/ids';
 import { eq, sql } from 'drizzle-orm';
 import { createStripeCustomer, createEmbeddedCheckoutSession, confirmCheckoutSession } from '../lib/stripe.js';
@@ -113,19 +113,6 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
     }
 
     // New sign-up: create customer (workspace owner)
-    let partner = await db.query.partners.findFirst();
-    if (!partner) {
-      const [newPartner] = await db
-        .insert(partners)
-        .values({
-          name: 'Default Partner',
-          partner_id: 'default',
-          secret_key: newUuid(),
-        })
-        .returning();
-      partner = newPartner;
-    }
-
     const stripeCustomerId = await createStripeCustomer(data.billingEmail as string, data.companyName as string);
     const customerId = newCustomerId();
 
@@ -133,7 +120,6 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
       .insert(customers)
       .values({
         user_id: user.id,
-        partner_id: partner.id,
         customer_id: customerId,
         customer_stripe_id: stripeCustomerId,
         company_name: data.companyName,
