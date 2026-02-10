@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Brain, Zap, Clock, Activity, ChevronDown, ChevronRight, Hash, Gauge, TrendingUp, Layers, BarChart3, List, User, DollarSign } from 'lucide-react';
+import { ArrowLeft, Brain, Clock, Activity, ChevronDown, ChevronRight, Hash, Gauge, TrendingUp, Layers, BarChart3, List, User, DollarSign } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { VendorIcon } from '../components/ToolIcon';
 
@@ -306,8 +306,6 @@ function LLMProfileDetail({
   const topOperations = llmData?.topOperations || [];
   const totals = llmData?.totals || { totalInputTokens: 0, totalOutputTokens: 0, distinctModels: 0, avgDurationMs: 0, avgTokensPerSec: 0, requestCount: 0, errorCount: 0 };
   const requestCount = totals.requestCount || profile.total_spans;
-  const errorCount = totals.errorCount || profile.total_errors;
-  const errorRate = requestCount > 0 ? ((errorCount / requestCount) * 100).toFixed(1) : '0.0';
   const maxDailyRequests = Math.max(1, ...dailyUsage.map((d) => d.request_count));
   const maxHourlyTokens = Math.max(1, ...hourlyTokens.map((h) => Number(h.input_tokens) + Number(h.output_tokens)));
   const maxBucketCount = Math.max(1, ...buckets.map((b) => b.span_count));
