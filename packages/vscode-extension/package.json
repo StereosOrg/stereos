@@ -43,6 +43,11 @@
         "category": "STEREOS"
       },
       {
+        "command": "stereos.flushPending",
+        "title": "Flush Pending Changes",
+        "category": "STEREOS"
+      },
+      {
         "command": "stereos.openEvent",
         "title": "Open Event in Dashboard",
         "category": "STEREOS"
@@ -71,6 +76,16 @@
           "default": "",
           "description": "Your STEREOS API token",
           "scope": "application"
+        },
+        "stereos.baseUrl": {
+          "type": "string",
+          "default": "https://api.trystereos.com",
+          "description": "API base URL (e.g. http://localhost:8787 for local dev)"
+        },
+        "stereos.dashboardUrl": {
+          "type": "string",
+          "default": "https://app.trystereos.com",
+          "description": "Dashboard URL for Connect and links"
         },
         "stereos.autoTrack": {
           "type": "boolean",
@@ -142,6 +157,7 @@
       "commandPalette": [
         { "command": "stereos.trackChange", "when": "stereos.enabled" },
         { "command": "stereos.openDashboard", "when": "stereos.enabled" },
+        { "command": "stereos.flushPending", "when": "stereos.enabled" },
         { "command": "stereos.openEvent", "when": "stereos.enabled" },
         { "command": "stereos.connectAccount", "when": "stereos.enabled" }
       ],

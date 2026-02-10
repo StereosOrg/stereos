@@ -157,7 +157,7 @@ const KILO_CODE_LOGO = 'https://www.searchyour.ai/archivos/kilo-code-ai-logo.jpg
 const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number; className?: string }>> = {
   'cloudflare-workers': 'https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/1/cloudflare-workers-icon-jsii6pml8tdp4sy8kgarwe.png/cloudflare-workers-icon-gfyr5fw7aqcwsa1on45oem.png?_a=DATAiZAAZAA0',
   cursor: CursorIcon,
-  vscode: '/vendors/vscode.svg',
+  vscode: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Visual_Studio_Code_1.35_icon.svg/3840px-Visual_Studio_Code_1.35_icon.svg.png',
   arcade: '/vendors/arcade.svg',
   e2b: '/vendors/e2b.svg',
   anthropic: CLAUDE_LOGO,

@@ -47,18 +47,25 @@ function createStereos(config: { apiToken: string; baseUrl: string }) {
         files_written: payload.files_written ?? [],
       };
       try {
-        const res = await fetch(`${baseUrl}/v1/events`, {
+        const url = `${baseUrl}/v1/events`;
+        console.log(`STEREOS: POST ${url} (intent: ${payload.intent?.slice(0, 50)}...)`);
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken}` },
           body: JSON.stringify(body),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          return { success: false, error: (data as { error?: string }).error || res.statusText || `HTTP ${res.status}` };
+          const errMsg = (data as { error?: string }).error || res.statusText || `HTTP ${res.status}`;
+          console.error('STEREOS: Send failed', res.status, errMsg);
+          return { success: false, error: errMsg };
         }
+        console.log('STEREOS: Event sent', (data as { event_id?: string }).event_id);
         return { success: true, event_id: (data as { event_id?: string }).event_id };
       } catch (err) {
-        return { success: false, error: err instanceof Error ? err.message : String(err) };
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error('STEREOS: Request error', errMsg);
+        return { success: false, error: errMsg };
       }
     },
   };
@@ -68,8 +75,8 @@ export async function activate(context: vscode.ExtensionContext) {
   console.log('STEREOS extension is now active');
 
   const config = vscode.workspace.getConfiguration('stereos');
-  const baseUrl = 'https://api.trystereos.com';
-  const dashboardUrl = 'https://app.trystereos.com';
+  const baseUrl = config.get<string>('baseUrl')?.trim() || 'https://api.trystereos.com';
+  const dashboardUrl = config.get<string>('dashboardUrl')?.trim() || 'https://app.trystereos.com';
 
   // Token: prefer secretStorage (set by deep link or Configure), then config (manual settings.json).
   let tokenCache: string | null | undefined = undefined;
@@ -83,10 +90,18 @@ export async function activate(context: vscode.ExtensionContext) {
     return tokenCache;
   }
 
+  function getBaseUrl(): string {
+    return config.get<string>('baseUrl')?.trim() || 'https://api.trystereos.com';
+  }
+
   function getStereos() {
     const token = tokenCache ?? config.get<string>('apiToken')?.trim();
     if (!token) return null;
-    if (!stereosInstance) stereosInstance = createStereos({ apiToken: token, baseUrl });
+    const url = getBaseUrl();
+    if (!stereosInstance || (stereosInstance as { _baseUrl?: string })._baseUrl !== url) {
+      stereosInstance = createStereos({ apiToken: token, baseUrl: url });
+      (stereosInstance as { _baseUrl?: string })._baseUrl = url;
+    }
     return stereosInstance;
   }
 
@@ -420,6 +435,24 @@ export async function activate(context: vscode.ExtensionContext) {
     updateStatusBar();
   }
 
+  /** Run flush now (e.g. from Flush Pending Changes command). */
+  function flushNow() {
+    if (flushTimeout) {
+      clearTimeout(flushTimeout);
+      flushTimeout = null;
+    }
+    if (!getStereos()) {
+      vscode.window.showWarningMessage('STEREOS: Connect your account first.');
+      return;
+    }
+    if (pendingChanges.size === 0) {
+      vscode.window.showInformationMessage('STEREOS: No pending file changes to send. Edit and save a file to track.');
+      return;
+    }
+    console.log(`STEREOS: Flush now (${pendingChanges.size} pending)`);
+    void trackChanges();
+  }
+
   // Called when token is set (URI handler or Configure) so UI updates
   function onConnected(): void {
     lastSendFailed = false;
@@ -433,6 +466,9 @@ export async function activate(context: vscode.ExtensionContext) {
     ensureWatchers();
     updateStatusBar();
     refreshTree();
+    if (vscode.workspace.workspaceFolders?.length === 0 && (tokenCache ?? config.get<string>('apiToken')?.trim())) {
+      console.warn('STEREOS: No workspace folder open — file watchers not active. Open a folder to auto-track changes.');
+    }
   });
 
   // Commands
@@ -572,6 +608,9 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   });
 
+  // Flush pending changes immediately
+  const flushCmd = vscode.commands.registerCommand('stereos.flushPending', flushNow);
+
   // Open Dashboard in browser
   const openDashboardCmd = vscode.commands.registerCommand('stereos.openDashboard', () => {
     vscode.env.openExternal(vscode.Uri.parse(dashboardUrl));
@@ -663,6 +702,7 @@ export async function activate(context: vscode.ExtensionContext) {
     connectAccountCmd,
     configureCmd,
     toggleCmd,
+    flushCmd,
     openDashboardCmd,
     openEventCmd
   );
