@@ -162,16 +162,33 @@ router.post('/logs', authMiddleware, async (c) => {
 
   const customerId = apiToken.customer.id;
 
+  const contentType = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  if (contentType === 'application/x-protobuf' || contentType === 'application/protobuf') {
+    return c.json(
+      {
+        error: 'OTLP binary protobuf is not supported',
+        hint: 'This endpoint accepts JSON only. Configure your OTLP exporter to use JSON encoding (e.g. protocol "http" with JSON, or Content-Type: application/json).',
+      },
+      415
+    );
+  }
+
   let body: any;
   try {
     body = await c.req.json();
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400);
+    return c.json(
+      {
+        error: 'Invalid JSON body',
+        hint: 'Body must be JSON. If your exporter sends binary protobuf, configure it to use JSON encoding.',
+      },
+      400
+    );
   }
 
-  const resourceLogs = body?.resourceLogs;
+  const resourceLogs = body?.resourceLogs ?? body?.resource_logs;
   if (!Array.isArray(resourceLogs)) {
-    return c.json({ error: 'Missing resourceLogs array' }, 400);
+    return c.json({ error: 'Missing resourceLogs array', hint: 'OTLP JSON expects root key "resourceLogs".' }, 400);
   }
 
   let totalInserted = 0;
@@ -366,6 +383,11 @@ router.post('/metrics', authMiddleware, async (c) => {
         const unit = metric.unit || null;
         const description = metric.description || null;
 
+        const num = (v: unknown): number | null => {
+          if (v === undefined || v === null) return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        };
         const pushRow = (dp: any, metricType: string, extras: Partial<typeof telemetryMetrics.$inferInsert> = {}) => {
           const attrs = flattenOtelAttributes(dp.attributes);
           const timeNano = dp.timeUnixNano ? BigInt(dp.timeUnixNano) : BigInt(Date.now() * 1_000_000);
@@ -394,24 +416,24 @@ router.post('/metrics', authMiddleware, async (c) => {
         if (metric.sum?.dataPoints) {
           for (const dp of metric.sum.dataPoints) {
             pushRow(dp, 'sum', {
-              value_double: dp.asDouble ?? null,
-              value_int: dp.asInt ?? null,
+              value_double: num(dp.asDouble),
+              value_int: num(dp.asInt) as number | null,
             });
           }
         } else if (metric.gauge?.dataPoints) {
           for (const dp of metric.gauge.dataPoints) {
             pushRow(dp, 'gauge', {
-              value_double: dp.asDouble ?? null,
-              value_int: dp.asInt ?? null,
+              value_double: num(dp.asDouble),
+              value_int: num(dp.asInt) as number | null,
             });
           }
         } else if (metric.histogram?.dataPoints) {
           for (const dp of metric.histogram.dataPoints) {
             pushRow(dp, 'histogram', {
-              count: dp.count ?? null,
-              sum: dp.sum ?? null,
-              min: dp.min ?? null,
-              max: dp.max ?? null,
+              count: num(dp.count) as number | null,
+              sum: num(dp.sum),
+              min: num(dp.min),
+              max: num(dp.max),
               bucket_counts: dp.bucketCounts ?? null,
               explicit_bounds: dp.explicitBounds ?? null,
             });
@@ -419,15 +441,15 @@ router.post('/metrics', authMiddleware, async (c) => {
         } else if (metric.exponentialHistogram?.dataPoints) {
           for (const dp of metric.exponentialHistogram.dataPoints) {
             pushRow(dp, 'exponential_histogram', {
-              count: dp.count ?? null,
-              sum: dp.sum ?? null,
+              count: num(dp.count) as number | null,
+              sum: num(dp.sum),
             });
           }
         } else if (metric.summary?.dataPoints) {
           for (const dp of metric.summary.dataPoints) {
             pushRow(dp, 'summary', {
-              count: dp.count ?? null,
-              sum: dp.sum ?? null,
+              count: num(dp.count) as number | null,
+              sum: num(dp.sum),
               quantile_values: dp.quantileValues ?? null,
             });
           }

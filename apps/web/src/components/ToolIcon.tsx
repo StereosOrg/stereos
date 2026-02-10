@@ -151,6 +151,7 @@ function OpenAIIcon({ size = 24, className }: { size?: number; className?: strin
 
 const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number; className?: string }>> = {
   'cloudflare-workers': 'https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/1/cloudflare-workers-icon-jsii6pml8tdp4sy8kgarwe.png/cloudflare-workers-icon-gfyr5fw7aqcwsa1on45oem.png?_a=DATAiZAAZAA0',
+  codex: 'https://images.icon-icons.com/3913/PNG/512/openai_logo_icon_248315.png',
   cursor: CursorIcon,
   vscode: '/vendors/vscode.svg',
   arcade: '/vendors/arcade.svg',

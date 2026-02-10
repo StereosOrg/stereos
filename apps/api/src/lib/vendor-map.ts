@@ -54,6 +54,17 @@ const VENDOR_REGISTRY: VendorDefinition[] = [
     },
   },
   {
+    slug: 'codex',
+    displayName: 'OpenAI Codex',
+    category: 'ide',
+    matcher: (attrs) => {
+      const svc = (attrs['service.name'] || '').toLowerCase();
+      const sdk = (attrs['sdk.name'] || '').toLowerCase();
+      const exe = (attrs['process.executable.name'] || '').toLowerCase();
+      return svc === 'codex' || sdk.includes('codex') || exe.includes('codex');
+    },
+  },
+  {
     slug: 'e2b',
     displayName: 'E2B Sandbox',
     category: 'sandbox',

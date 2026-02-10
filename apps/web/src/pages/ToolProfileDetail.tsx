@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Brain, Zap, AlertTriangle, Clock, Activity, ChevronDown, ChevronRight, Hash, Gauge, TrendingUp, Layers } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, AlertTriangle, Clock, Activity, ChevronDown, ChevronRight, Hash, Gauge, TrendingUp, Layers, BarChart3, List } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { VendorIcon } from '../components/ToolIcon';
 
@@ -282,6 +282,7 @@ function LLMProfileDetail({
   metrics: CustomMetric[];
 }) {
   const { profileId } = useParams<{ profileId: string }>();
+  const [activeTab, setActiveTab] = useState<'metrics' | 'logs'>('metrics');
 
   const { data: llmData } = useQuery<LLMStats>({
     queryKey: ['tool-profile-llm-stats', profileId],
@@ -361,6 +362,63 @@ function LLMProfileDetail({
         </div>
       </div>
 
+      {/* Tab switcher */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0',
+          marginBottom: '24px',
+          border: '2px solid var(--border-color)',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          width: 'fit-content',
+          background: 'var(--bg-cream)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab('metrics')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 20px',
+            fontWeight: 700,
+            fontSize: '14px',
+            border: 'none',
+            background: activeTab === 'metrics' ? 'var(--bg-white)' : 'transparent',
+            color: activeTab === 'metrics' ? 'var(--dark)' : '#666',
+            boxShadow: activeTab === 'metrics' ? '2px 2px 0 var(--border-color)' : 'none',
+            borderRight: activeTab === 'metrics' ? '2px solid var(--border-color)' : '1px solid var(--border-color)',
+            cursor: 'pointer',
+          }}
+        >
+          <BarChart3 size={18} /> Metrics
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('logs')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 20px',
+            fontWeight: 700,
+            fontSize: '14px',
+            border: 'none',
+            background: activeTab === 'logs' ? 'var(--bg-white)' : 'transparent',
+            color: activeTab === 'logs' ? 'var(--dark)' : '#666',
+            boxShadow: activeTab === 'logs' ? '2px 2px 0 var(--border-color)' : 'none',
+            borderLeft: activeTab === 'logs' ? 'none' : '1px solid var(--border-color)',
+            cursor: 'pointer',
+          }}
+        >
+          <List size={18} /> Logs
+        </button>
+      </div>
+
+      {activeTab === 'metrics' && (
+        <>
       {/* Stats row - 6 cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px', marginBottom: '32px' }}>
         <div className="card" style={{ textAlign: 'center' }}>
@@ -395,6 +453,17 @@ function LLMProfileDetail({
           <div style={{ fontSize: '28px', fontWeight: 800 }}>{formatDuration(latency?.avg || totals.avgDurationMs || 0)}</div>
           <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Avg Latency</div>
         </div>
+      </div>
+
+      {/* LLM Tokens Consumed — section heading */}
+      <div style={{ marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Hash size={22} style={{ color: '#8b5cf6' }} />
+          LLM Tokens Consumed
+        </h2>
+        <p style={{ fontSize: '13px', color: '#666', marginTop: '4px' }}>
+          Input and output token usage over time
+        </p>
       </div>
 
       {/* Two-column: Daily requests + Hourly token throughput */}
@@ -802,8 +871,10 @@ function LLMProfileDetail({
           </div>
         )}
       </div>
+        </>
+      )}
 
-      {/* Recent LLM Traces - expanded with gen_ai attributes */}
+      {activeTab === 'logs' && (
       <div className="card">
         <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
           <Brain size={18} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
@@ -834,6 +905,7 @@ function LLMProfileDetail({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -853,6 +925,7 @@ function StandardProfileDetail({
   spans: Span[];
   metrics: CustomMetric[];
 }) {
+  const [activeTab, setActiveTab] = useState<'metrics' | 'logs'>('metrics');
   const errorRate = profile.total_spans > 0 ? ((profile.total_errors / profile.total_spans) * 100).toFixed(1) : '0.0';
   const maxSpanCount = Math.max(1, ...buckets.map((b) => b.span_count));
 
@@ -897,6 +970,63 @@ function StandardProfileDetail({
         </div>
       </div>
 
+      {/* Tab switcher */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0',
+          marginBottom: '24px',
+          border: '2px solid var(--border-color)',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          width: 'fit-content',
+          background: 'var(--bg-cream)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab('metrics')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 20px',
+            fontWeight: 700,
+            fontSize: '14px',
+            border: 'none',
+            background: activeTab === 'metrics' ? 'var(--bg-white)' : 'transparent',
+            color: activeTab === 'metrics' ? 'var(--dark)' : '#666',
+            boxShadow: activeTab === 'metrics' ? '2px 2px 0 var(--border-color)' : 'none',
+            borderRight: activeTab === 'metrics' ? '2px solid var(--border-color)' : '1px solid var(--border-color)',
+            cursor: 'pointer',
+          }}
+        >
+          <BarChart3 size={18} /> Metrics
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('logs')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 20px',
+            fontWeight: 700,
+            fontSize: '14px',
+            border: 'none',
+            background: activeTab === 'logs' ? 'var(--bg-white)' : 'transparent',
+            color: activeTab === 'logs' ? 'var(--dark)' : '#666',
+            boxShadow: activeTab === 'logs' ? '2px 2px 0 var(--border-color)' : 'none',
+            borderLeft: activeTab === 'logs' ? 'none' : '1px solid var(--border-color)',
+            cursor: 'pointer',
+          }}
+        >
+          <List size={18} /> Logs
+        </button>
+      </div>
+
+      {activeTab === 'metrics' && (
+        <>
       {/* Stats row */}
       <div className="grid-3" style={{ marginBottom: '32px' }}>
         <div className="card" style={{ textAlign: 'center' }}>
@@ -1008,8 +1138,10 @@ function StandardProfileDetail({
           </div>
         )}
       </div>
+        </>
+      )}
 
-      {/* Recent Spans */}
+      {activeTab === 'logs' && (
       <div className="card">
         <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Recent Spans</h3>
         {spans.length === 0 ? (
@@ -1060,6 +1192,7 @@ function StandardProfileDetail({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
