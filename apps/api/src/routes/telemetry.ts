@@ -378,22 +378,81 @@ router.get('/tool-profiles/:profileId/llm-stats', sessionOrTokenAuth, async (c) 
     SELECT
       sum(COALESCE((span_attributes->>'gen_ai.usage.input_tokens')::int, 0))::bigint AS total_input_tokens,
       sum(COALESCE((span_attributes->>'gen_ai.usage.output_tokens')::int, 0))::bigint AS total_output_tokens,
-      count(DISTINCT span_attributes->>'gen_ai.request.model') FILTER (WHERE span_attributes->>'gen_ai.request.model' IS NOT NULL)::int AS distinct_models
+      count(DISTINCT span_attributes->>'gen_ai.request.model') FILTER (WHERE span_attributes->>'gen_ai.request.model' IS NOT NULL)::int AS distinct_models,
+      avg(duration_ms)::int AS avg_duration_ms,
+      avg(COALESCE((span_attributes->>'gen_ai.usage.output_tokens')::float, 0) /
+        NULLIF(duration_ms::float / 1000.0, 0))::numeric(10,1) AS avg_tokens_per_sec
     FROM "TelemetrySpan"
     WHERE tool_profile_id = ${profileId}
+  `);
+
+  // Hourly token throughput (last 24h)
+  const hourlyTokensResult = await db.execute(sql`
+    SELECT
+      date_trunc('hour', start_time) AS hour,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.input_tokens')::int, 0))::bigint AS input_tokens,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.output_tokens')::int, 0))::bigint AS output_tokens,
+      count(*)::int AS request_count,
+      avg(duration_ms)::int AS avg_latency_ms
+    FROM "TelemetrySpan"
+    WHERE tool_profile_id = ${profileId}
+      AND start_time >= ${new Date(Date.now() - 24 * 60 * 60 * 1000)}
+    GROUP BY date_trunc('hour', start_time)
+    ORDER BY hour ASC
+  `);
+
+  // Per-model latency percentiles
+  const modelLatencyResult = await db.execute(sql`
+    SELECT
+      COALESCE(span_attributes->>'gen_ai.request.model', span_attributes->>'gen_ai.response.model', 'unknown') AS model,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)::int AS p50,
+      percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)::int AS p95,
+      percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms)::int AS p99,
+      avg(duration_ms)::int AS avg_ms,
+      min(duration_ms)::int AS min_ms,
+      max(duration_ms)::int AS max_ms
+    FROM "TelemetrySpan"
+    WHERE tool_profile_id = ${profileId}
+      AND duration_ms IS NOT NULL
+    GROUP BY COALESCE(span_attributes->>'gen_ai.request.model', span_attributes->>'gen_ai.response.model', 'unknown')
+    ORDER BY avg(duration_ms) DESC
+  `);
+
+  // Top span operations
+  const topOperationsResult = await db.execute(sql`
+    SELECT
+      span_name,
+      count(*)::int AS call_count,
+      avg(duration_ms)::int AS avg_latency_ms,
+      count(*) FILTER (WHERE status_code = 'ERROR')::int AS error_count,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.input_tokens')::int, 0))::bigint AS total_input_tokens,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.output_tokens')::int, 0))::bigint AS total_output_tokens
+    FROM "TelemetrySpan"
+    WHERE tool_profile_id = ${profileId}
+    GROUP BY span_name
+    ORDER BY call_count DESC
+    LIMIT 10
   `);
 
   const modelUsage = Array.isArray(modelUsageResult) ? modelUsageResult : (modelUsageResult as { rows?: unknown[] })?.rows ?? [];
   const dailyUsage = Array.isArray(dailyUsageResult) ? dailyUsageResult : (dailyUsageResult as { rows?: unknown[] })?.rows ?? [];
   const totalsRow = Array.isArray(totalsResult) ? totalsResult[0] : (totalsResult as { rows?: unknown[] })?.rows?.[0];
+  const hourlyTokens = Array.isArray(hourlyTokensResult) ? hourlyTokensResult : (hourlyTokensResult as { rows?: unknown[] })?.rows ?? [];
+  const modelLatency = Array.isArray(modelLatencyResult) ? modelLatencyResult : (modelLatencyResult as { rows?: unknown[] })?.rows ?? [];
+  const topOperations = Array.isArray(topOperationsResult) ? topOperationsResult : (topOperationsResult as { rows?: unknown[] })?.rows ?? [];
 
   return c.json({
     modelUsage,
     dailyUsage,
+    hourlyTokens,
+    modelLatency,
+    topOperations,
     totals: {
       totalInputTokens: Number((totalsRow as Record<string, unknown>)?.total_input_tokens ?? 0),
       totalOutputTokens: Number((totalsRow as Record<string, unknown>)?.total_output_tokens ?? 0),
       distinctModels: Number((totalsRow as Record<string, unknown>)?.distinct_models ?? 0),
+      avgDurationMs: Number((totalsRow as Record<string, unknown>)?.avg_duration_ms ?? 0),
+      avgTokensPerSec: Number((totalsRow as Record<string, unknown>)?.avg_tokens_per_sec ?? 0),
     },
   });
 });

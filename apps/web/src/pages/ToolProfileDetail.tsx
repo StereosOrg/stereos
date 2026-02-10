@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Brain, Zap, AlertTriangle, Clock, Activity } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, AlertTriangle, Clock, Activity, ChevronDown, ChevronRight, Hash, Gauge, TrendingUp, Layers } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { VendorIcon, LLM_PROVIDERS } from '../components/ToolIcon';
+import { VendorIcon } from '../components/ToolIcon';
 
 interface ToolProfile {
   id: string;
@@ -36,8 +37,16 @@ interface Span {
   span_kind: string | null;
   duration_ms: number | null;
   status_code: string | null;
+  status_message: string | null;
   start_time: string;
+  end_time: string | null;
   trace_id: string;
+  span_id: string;
+  parent_span_id: string | null;
+  service_name: string | null;
+  vendor: string;
+  span_attributes: Record<string, string> | null;
+  resource_attributes: Record<string, string> | null;
 }
 
 interface ModelUsage {
@@ -58,13 +67,45 @@ interface DailyUsage {
   error_count: number;
 }
 
+interface HourlyTokens {
+  hour: string;
+  input_tokens: number;
+  output_tokens: number;
+  request_count: number;
+  avg_latency_ms: number;
+}
+
+interface ModelLatency {
+  model: string;
+  p50: number;
+  p95: number;
+  p99: number;
+  avg_ms: number;
+  min_ms: number;
+  max_ms: number;
+}
+
+interface TopOperation {
+  span_name: string;
+  call_count: number;
+  avg_latency_ms: number;
+  error_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
 interface LLMStats {
   modelUsage: ModelUsage[];
   dailyUsage: DailyUsage[];
+  hourlyTokens: HourlyTokens[];
+  modelLatency: ModelLatency[];
+  topOperations: TopOperation[];
   totals: {
     totalInputTokens: number;
     totalOutputTokens: number;
     distinctModels: number;
+    avgDurationMs: number;
+    avgTokensPerSec: number;
   };
 }
 
@@ -80,11 +121,140 @@ function formatTokenCount(count: number): string {
   return count.toLocaleString();
 }
 
+function formatDuration(ms: number): string {
+  if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
+  if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)}s`;
+  return `${Math.round(ms)}ms`;
+}
+
+// Extract gen_ai.* attributes from span_attributes
+function getGenAIAttrs(attrs: Record<string, string> | null): Record<string, string> {
+  if (!attrs) return {};
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key.startsWith('gen_ai.')) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+// Pretty label for gen_ai attribute keys
+function formatAttrKey(key: string): string {
+  return key
+    .replace('gen_ai.', '')
+    .replace('request.', '')
+    .replace('response.', 'resp.')
+    .replace('usage.', '')
+    .replace(/_/g, ' ');
+}
+
+// ── Expandable span row ──────────────────────────────────────────────────
+
+function SpanRow({ span }: { span: Span }) {
+  const [expanded, setExpanded] = useState(false);
+  const genAI = getGenAIAttrs(span.span_attributes);
+  const hasGenAI = Object.keys(genAI).length > 0;
+  const model = span.span_attributes?.['gen_ai.request.model'] || span.span_attributes?.['gen_ai.response.model'] || null;
+  const inputTokens = span.span_attributes?.['gen_ai.usage.input_tokens'];
+  const outputTokens = span.span_attributes?.['gen_ai.usage.output_tokens'];
+
+  return (
+    <>
+      <tr
+        style={{ borderBottom: expanded ? 'none' : '1px solid #eee', cursor: hasGenAI ? 'pointer' : 'default' }}
+        onClick={() => hasGenAI && setExpanded(!expanded)}
+      >
+        <td style={{ padding: '8px 12px', fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {hasGenAI && (expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+            <span style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+              {span.span_name}
+            </span>
+          </div>
+        </td>
+        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '12px', color: '#666' }}>
+          {model || '—'}
+        </td>
+        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '12px' }}>
+          {inputTokens ? formatTokenCount(Number(inputTokens)) : '—'}
+        </td>
+        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '12px' }}>
+          {outputTokens ? formatTokenCount(Number(outputTokens)) : '—'}
+        </td>
+        <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>
+          {span.duration_ms != null ? formatDuration(span.duration_ms) : '—'}
+        </td>
+        <td style={{ padding: '8px 12px' }}>
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              padding: '2px 6px',
+              background: span.status_code === 'ERROR' ? '#fde8e8' : span.status_code === 'OK' ? '#e8fde8' : '#f0f0f0',
+              color: span.status_code === 'ERROR' ? '#c0392b' : span.status_code === 'OK' ? '#27ae60' : '#888',
+              border: '1px solid currentColor',
+            }}
+          >
+            {span.status_code || 'UNSET'}
+          </span>
+        </td>
+        <td style={{ padding: '8px 12px', color: '#888', whiteSpace: 'nowrap', fontSize: '12px' }}>
+          {new Date(span.start_time).toLocaleString()}
+        </td>
+      </tr>
+      {expanded && hasGenAI && (
+        <tr style={{ borderBottom: '1px solid #eee' }}>
+          <td colSpan={7} style={{ padding: '0 12px 12px 36px' }}>
+            <div
+              style={{
+                background: 'var(--bg-cream)',
+                border: '2px solid var(--border-color)',
+                padding: '12px 16px',
+              }}
+            >
+              {/* gen_ai attributes grid */}
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px', color: '#888', letterSpacing: '0.5px' }}>
+                Gen AI Attributes
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '6px' }}>
+                {Object.entries(genAI).map(([key, value]) => (
+                  <div key={key} style={{ fontSize: '12px' }}>
+                    <span style={{ color: '#888', fontWeight: 600 }}>{formatAttrKey(key)}:</span>{' '}
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--dark)' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Trace context */}
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', fontSize: '11px', color: '#888', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <span><strong>trace:</strong> <code style={{ fontSize: '10px' }}>{span.trace_id}</code></span>
+                <span><strong>span:</strong> <code style={{ fontSize: '10px' }}>{span.span_id}</code></span>
+                {span.parent_span_id && <span><strong>parent:</strong> <code style={{ fontSize: '10px' }}>{span.parent_span_id}</code></span>}
+                <span><strong>kind:</strong> {span.span_kind || '—'}</span>
+                {span.service_name && <span><strong>service:</strong> {span.service_name}</span>}
+              </div>
+
+              {/* Status message if error */}
+              {span.status_code === 'ERROR' && span.status_message && (
+                <div style={{ marginTop: '8px', padding: '8px', background: '#fde8e8', border: '1px solid #c0392b', fontSize: '12px', fontFamily: 'monospace', color: '#c0392b' }}>
+                  {span.status_message}
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 // ── LLM-focused detail view ─────────────────────────────────────────────
 
 function LLMProfileDetail({
   profile,
   latency,
+  buckets,
   spans,
 }: {
   profile: ToolProfile;
@@ -109,9 +279,14 @@ function LLMProfileDetail({
 
   const modelUsage = llmData?.modelUsage || [];
   const dailyUsage = llmData?.dailyUsage || [];
-  const totals = llmData?.totals || { totalInputTokens: 0, totalOutputTokens: 0, distinctModels: 0 };
+  const hourlyTokens = llmData?.hourlyTokens || [];
+  const modelLatency = llmData?.modelLatency || [];
+  const topOperations = llmData?.topOperations || [];
+  const totals = llmData?.totals || { totalInputTokens: 0, totalOutputTokens: 0, distinctModels: 0, avgDurationMs: 0, avgTokensPerSec: 0 };
   const errorRate = profile.total_spans > 0 ? ((profile.total_errors / profile.total_spans) * 100).toFixed(1) : '0.0';
   const maxDailyRequests = Math.max(1, ...dailyUsage.map((d) => d.request_count));
+  const maxHourlyTokens = Math.max(1, ...hourlyTokens.map((h) => Number(h.input_tokens) + Number(h.output_tokens)));
+  const maxBucketCount = Math.max(1, ...buckets.map((b) => b.span_count));
 
   return (
     <div>
@@ -120,7 +295,7 @@ function LLMProfileDetail({
         <ArrowLeft size={20} /> Back to Tools
       </Link>
 
-      {/* LLM Header with provider badge */}
+      {/* LLM Header */}
       <div
         style={{
           display: 'flex',
@@ -165,8 +340,8 @@ function LLMProfileDetail({
         </div>
       </div>
 
-      {/* LLM Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '32px' }}>
+      {/* Stats row - 6 cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px', marginBottom: '32px' }}>
         <div className="card" style={{ textAlign: 'center' }}>
           <Zap size={20} style={{ color: '#f59e0b', marginBottom: '8px' }} />
           <div style={{ fontSize: '28px', fontWeight: 800 }}>{profile.total_spans.toLocaleString()}</div>
@@ -183,6 +358,11 @@ function LLMProfileDetail({
           <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Output Tokens</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
+          <TrendingUp size={20} style={{ color: '#06b6d4', marginBottom: '8px' }} />
+          <div style={{ fontSize: '28px', fontWeight: 800 }}>{totals.avgTokensPerSec > 0 ? `${totals.avgTokensPerSec}` : '—'}</div>
+          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Tokens/sec</div>
+        </div>
+        <div className="card" style={{ textAlign: 'center' }}>
           <AlertTriangle size={20} style={{ color: Number(errorRate) > 5 ? '#c0392b' : '#888', marginBottom: '8px' }} />
           <div style={{ fontSize: '28px', fontWeight: 800, color: Number(errorRate) > 5 ? '#c0392b' : 'var(--dark)' }}>
             {errorRate}%
@@ -191,39 +371,46 @@ function LLMProfileDetail({
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
           <Clock size={20} style={{ color: '#10b981', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>{Math.round(latency?.avg || 0)}ms</div>
+          <div style={{ fontSize: '28px', fontWeight: 800 }}>{formatDuration(latency?.avg || totals.avgDurationMs || 0)}</div>
           <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Avg Latency</div>
         </div>
       </div>
 
-      {/* Two-column layout: Usage chart + Supported Providers */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px', marginBottom: '32px' }}>
-        {/* Usage over time */}
+      {/* Two-column: Daily requests + Hourly token throughput */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
+        {/* Daily requests chart */}
         <div className="card">
-          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>LLM Requests (last 30 days)</h3>
+          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+            <Gauge size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+            Request Volume (30 days)
+          </h3>
           {dailyUsage.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '140px' }}>
-              {dailyUsage.map((day, i) => {
-                const height = Math.max(4, (day.request_count / maxDailyRequests) * 100);
-                const errorRatio = day.request_count > 0 ? day.error_count / day.request_count : 0;
-                return (
-                  <div
-                    key={i}
-                    title={`${new Date(day.day).toLocaleDateString()}: ${day.request_count} requests, ${formatTokenCount(day.input_tokens + day.output_tokens)} tokens`}
-                    style={{
-                      flex: 1,
-                      height: `${height}%`,
-                      background: errorRatio > 0.1
-                        ? '#c0392b'
-                        : 'linear-gradient(to top, #8b5cf6, #a78bfa)',
-                      border: '1px solid var(--border-color)',
-                      minWidth: '4px',
-                      borderRadius: '2px 2px 0 0',
-                      transition: 'height 0.3s ease',
-                    }}
-                  />
-                );
-              })}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '140px' }}>
+                {dailyUsage.map((day, i) => {
+                  const height = Math.max(4, (day.request_count / maxDailyRequests) * 100);
+                  const errorRatio = day.request_count > 0 ? day.error_count / day.request_count : 0;
+                  return (
+                    <div
+                      key={i}
+                      title={`${new Date(day.day).toLocaleDateString()}: ${day.request_count} requests, ${day.error_count} errors`}
+                      style={{
+                        flex: 1,
+                        height: `${height}%`,
+                        background: errorRatio > 0.1 ? '#c0392b' : 'linear-gradient(to top, #8b5cf6, #a78bfa)',
+                        border: '1px solid var(--border-color)',
+                        minWidth: '4px',
+                        borderRadius: '2px 2px 0 0',
+                        transition: 'height 0.3s ease',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#888', marginTop: '4px' }}>
+                <span>{dailyUsage.length > 0 ? new Date(dailyUsage[0].day).toLocaleDateString() : ''}</span>
+                <span>{dailyUsage.length > 0 ? new Date(dailyUsage[dailyUsage.length - 1].day).toLocaleDateString() : ''}</span>
+              </div>
             </div>
           ) : (
             <div style={{ height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
@@ -232,50 +419,147 @@ function LLMProfileDetail({
           )}
         </div>
 
-        {/* Supported LLM Providers */}
+        {/* Hourly token throughput */}
         <div className="card">
-          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Supported LLM Providers</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {LLM_PROVIDERS.map((provider) => {
-              const Icon = provider.icon;
-              const isCurrentVendor = provider.slug === profile.vendor;
-              return (
-                <div
-                  key={provider.slug}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '10px 12px',
-                    background: isCurrentVendor ? 'var(--bg-mint)' : 'var(--bg-cream)',
-                    border: `2px solid ${isCurrentVendor ? provider.color : 'var(--border-color)'}`,
-                    borderRadius: '0px',
-                    transition: 'transform 0.1s ease',
-                  }}
-                >
-                  <Icon size={28} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '14px', fontWeight: 700 }}>{provider.displayName}</div>
-                  </div>
-                  {isCurrentVendor && (
-                    <span
+          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+            <TrendingUp size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+            Token Throughput (24h)
+          </h3>
+          {hourlyTokens.length > 0 ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '140px' }}>
+                {hourlyTokens.map((h, i) => {
+                  const total = Number(h.input_tokens) + Number(h.output_tokens);
+                  const height = Math.max(4, (total / maxHourlyTokens) * 100);
+                  const inputPct = total > 0 ? (Number(h.input_tokens) / total) * 100 : 50;
+                  return (
+                    <div
+                      key={i}
+                      title={`${new Date(h.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${formatTokenCount(Number(h.input_tokens))} in, ${formatTokenCount(Number(h.output_tokens))} out`}
                       style={{
-                        fontSize: '10px',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        padding: '2px 8px',
-                        background: provider.color,
-                        color: '#fff',
-                        letterSpacing: '0.5px',
+                        flex: 1,
+                        height: `${height}%`,
+                        background: `linear-gradient(to top, #3b82f6 0%, #3b82f6 ${inputPct}%, #8b5cf6 ${inputPct}%, #8b5cf6 100%)`,
+                        border: '1px solid var(--border-color)',
+                        minWidth: '4px',
+                        borderRadius: '2px 2px 0 0',
+                        transition: 'height 0.3s ease',
                       }}
-                    >
-                      Active
-                    </span>
-                  )}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: '16px', fontSize: '11px', marginTop: '8px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '10px', height: '10px', background: '#3b82f6', border: '1px solid var(--border-color)', display: 'inline-block' }} />
+                  Input
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '10px', height: '10px', background: '#8b5cf6', border: '1px solid var(--border-color)', display: 'inline-block' }} />
+                  Output
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
+              No hourly data yet
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Two-column: Daily token usage + Activity timeline */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
+        {/* Daily token usage (stacked) */}
+        <div className="card">
+          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+            <Hash size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+            Daily Token Consumption (30 days)
+          </h3>
+          {dailyUsage.length > 0 ? (() => {
+            const maxTokens = Math.max(1, ...dailyUsage.map((d) => Number(d.input_tokens) + Number(d.output_tokens)));
+            return (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '140px' }}>
+                  {dailyUsage.map((day, i) => {
+                    const total = Number(day.input_tokens) + Number(day.output_tokens);
+                    const height = Math.max(4, (total / maxTokens) * 100);
+                    const inputPct = total > 0 ? (Number(day.input_tokens) / total) * 100 : 50;
+                    return (
+                      <div
+                        key={i}
+                        title={`${new Date(day.day).toLocaleDateString()}: ${formatTokenCount(Number(day.input_tokens))} in, ${formatTokenCount(Number(day.output_tokens))} out`}
+                        style={{
+                          flex: 1,
+                          height: `${height}%`,
+                          background: `linear-gradient(to top, #3b82f6 0%, #3b82f6 ${inputPct}%, #8b5cf6 ${inputPct}%, #8b5cf6 100%)`,
+                          border: '1px solid var(--border-color)',
+                          minWidth: '4px',
+                          borderRadius: '2px 2px 0 0',
+                          transition: 'height 0.3s ease',
+                        }}
+                      />
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+                <div style={{ display: 'flex', gap: '16px', fontSize: '11px', marginTop: '8px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '10px', height: '10px', background: '#3b82f6', border: '1px solid var(--border-color)', display: 'inline-block' }} />
+                    Input
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '10px', height: '10px', background: '#8b5cf6', border: '1px solid var(--border-color)', display: 'inline-block' }} />
+                    Output
+                  </span>
+                </div>
+              </div>
+            );
+          })() : (
+            <div style={{ height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
+              No token data yet
+            </div>
+          )}
+        </div>
+
+        {/* Activity timeline (24h) */}
+        <div className="card">
+          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+            <Activity size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+            Request Activity (24h)
+          </h3>
+          {buckets.length > 0 ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '140px' }}>
+                {buckets.map((bucket, i) => {
+                  const height = Math.max(4, (bucket.span_count / maxBucketCount) * 100);
+                  const errorRatio = bucket.span_count > 0 ? bucket.error_count / bucket.span_count : 0;
+                  return (
+                    <div
+                      key={i}
+                      title={`${new Date(bucket.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${bucket.span_count} spans, ${bucket.error_count} errors, avg ${bucket.avg_latency_ms}ms`}
+                      style={{
+                        flex: 1,
+                        height: `${height}%`,
+                        background: errorRatio > 0.1 ? '#c0392b' : 'var(--dark)',
+                        border: '1px solid var(--border-color)',
+                        minWidth: '4px',
+                        borderRadius: '2px 2px 0 0',
+                        transition: 'height 0.3s ease',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#888', marginTop: '4px' }}>
+                <span>{buckets.length > 0 ? new Date(buckets[0].hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                <span>{buckets.length > 0 ? new Date(buckets[buckets.length - 1].hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
+              No activity data yet
+            </div>
+          )}
         </div>
       </div>
 
@@ -309,13 +593,13 @@ function LLMProfileDetail({
                       {model.request_count.toLocaleString()}
                     </td>
                     <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>
-                      {model.avg_latency_ms != null ? `${model.avg_latency_ms}ms` : '—'}
+                      {model.avg_latency_ms != null ? formatDuration(model.avg_latency_ms) : '—'}
                     </td>
                     <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>
-                      {formatTokenCount(model.total_input_tokens)}
+                      {formatTokenCount(Number(model.total_input_tokens))}
                     </td>
                     <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>
-                      {formatTokenCount(model.total_output_tokens)}
+                      {formatTokenCount(Number(model.total_output_tokens))}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <span
@@ -342,10 +626,99 @@ function LLMProfileDetail({
         </div>
       )}
 
-      {/* Latency Distribution */}
+      {/* Two-column: Per-model latency + Top operations */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
+        {/* Per-model latency percentiles */}
+        {modelLatency.length > 0 && (
+          <div className="card">
+            <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+              <Clock size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+              Latency by Model
+            </h3>
+            {modelLatency.map((m) => {
+              const maxVal = Math.max(m.p99, 1);
+              return (
+                <div key={m.model} style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'monospace', marginBottom: '6px' }}>{m.model}</div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '11px' }}>
+                    <div style={{ flex: 1 }}>
+                      {(['p50', 'p95', 'p99'] as const).map((key) => {
+                        const val = m[key];
+                        const pct = Math.max(2, (val / maxVal) * 100);
+                        const colors = { p50: '#a78bfa', p95: '#8b5cf6', p99: '#c0392b' };
+                        return (
+                          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                            <span style={{ width: '24px', fontWeight: 600, textTransform: 'uppercase', color: '#888' }}>{key}</span>
+                            <div style={{ flex: 1, height: '8px', background: 'var(--bg-cream)', border: '1px solid var(--border-color)' }}>
+                              <div style={{ height: '100%', width: `${pct}%`, background: colors[key], transition: 'width 0.3s' }} />
+                            </div>
+                            <span style={{ width: '60px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{formatDuration(val)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
+                    min {formatDuration(m.min_ms)} / avg {formatDuration(m.avg_ms)} / max {formatDuration(m.max_ms)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Top operations */}
+        {topOperations.length > 0 && (
+          <div className="card">
+            <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+              <Layers size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+              Top Span Operations
+            </h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 8px', fontWeight: 700 }}>Operation</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 700 }}>Calls</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 700 }}>Avg</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 700 }}>Tokens</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 700 }}>Err</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topOperations.map((op) => (
+                    <tr key={op.span_name} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontWeight: 600, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {op.span_name}
+                      </td>
+                      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{op.call_count.toLocaleString()}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{op.avg_latency_ms ? formatDuration(op.avg_latency_ms) : '—'}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>
+                        {formatTokenCount(Number(op.total_input_tokens) + Number(op.total_output_tokens))}
+                      </td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, padding: '1px 4px',
+                          background: op.error_count > 0 ? '#fde8e8' : '#e8fde8',
+                          color: op.error_count > 0 ? '#c0392b' : '#27ae60',
+                          border: '1px solid currentColor',
+                        }}>
+                          {op.error_count}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Global Latency Distribution */}
       {latency && latency.p99 > 0 && (
         <div className="card" style={{ marginBottom: '32px' }}>
-          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Latency Distribution</h3>
+          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Global Latency Distribution</h3>
           {(['p50', 'p95', 'p99'] as const).map((key) => {
             const value = latency[key];
             const pct = latency.p99 > 0 ? Math.max(2, (value / latency.p99) * 100) : 0;
@@ -353,7 +726,7 @@ function LLMProfileDetail({
               <div key={key} style={{ marginBottom: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>
                   <span style={{ textTransform: 'uppercase' }}>{key}</span>
-                  <span>{Math.round(value)}ms</span>
+                  <span>{formatDuration(value)}</span>
                 </div>
                 <div style={{ height: '12px', background: 'var(--bg-cream)', border: '2px solid var(--border-color)' }}>
                   <div
@@ -371,9 +744,12 @@ function LLMProfileDetail({
         </div>
       )}
 
-      {/* Recent Spans */}
+      {/* Recent LLM Traces - expanded with gen_ai attributes */}
       <div className="card">
-        <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Recent LLM Calls</h3>
+        <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
+          <Brain size={18} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
+          Recent LLM Traces
+        </h3>
         {spans.length === 0 ? (
           <p style={{ color: '#888' }}>No spans recorded yet.</p>
         ) : (
@@ -382,7 +758,9 @@ function LLMProfileDetail({
               <thead>
                 <tr style={{ borderBottom: '3px solid var(--border-color)', textAlign: 'left' }}>
                   <th style={{ padding: '8px 12px', fontWeight: 700 }}>Name</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Kind</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Model</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>In Tokens</th>
+                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Out Tokens</th>
                   <th style={{ padding: '8px 12px', fontWeight: 700 }}>Duration</th>
                   <th style={{ padding: '8px 12px', fontWeight: 700 }}>Status</th>
                   <th style={{ padding: '8px 12px', fontWeight: 700 }}>Time</th>
@@ -390,32 +768,7 @@ function LLMProfileDetail({
               </thead>
               <tbody>
                 {spans.map((span) => (
-                  <tr key={span.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {span.span_name}
-                    </td>
-                    <td style={{ padding: '8px 12px', color: '#888' }}>{span.span_kind || '—'}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>
-                      {span.duration_ms != null ? `${span.duration_ms}ms` : '—'}
-                    </td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          background: span.status_code === 'ERROR' ? '#fde8e8' : span.status_code === 'OK' ? '#e8fde8' : '#f0f0f0',
-                          color: span.status_code === 'ERROR' ? '#c0392b' : span.status_code === 'OK' ? '#27ae60' : '#888',
-                          border: '1px solid currentColor',
-                        }}
-                      >
-                        {span.status_code || 'UNSET'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '8px 12px', color: '#888', whiteSpace: 'nowrap' }}>
-                      {new Date(span.start_time).toLocaleString()}
-                    </td>
-                  </tr>
+                  <SpanRow key={span.id} span={span} />
                 ))}
               </tbody>
             </table>
@@ -646,7 +999,7 @@ export function ToolProfileDetail() {
   const { data: spansData } = useQuery<{ spans: Span[] }>({
     queryKey: ['tool-profile-spans', profileId],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/tool-profiles/${profileId}/spans?limit=20`, {
+      const res = await fetch(`${API_BASE}/v1/tool-profiles/${profileId}/spans?limit=25`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
