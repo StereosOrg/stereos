@@ -176,8 +176,12 @@ router.post('/logs', authMiddleware, async (c) => {
   for (const rl of resourceLogs) {
     const resourceAttrs = flattenOtelAttributes(rl.resource?.attributes);
     const vendor = canonicalizeVendor(resourceAttrs);
+    const serviceName = resourceAttrs['service.name'] || null;
 
     const logRows: Array<typeof telemetryLogs.$inferInsert> = [];
+    const spanRows: Array<typeof telemetrySpans.$inferInsert> = [];
+    const traceIds = new Set<string>();
+    let errorCount = 0;
 
     const scopeLogs = rl.scopeLogs || [];
     for (const sl of scopeLogs) {
@@ -187,6 +191,7 @@ router.post('/logs', authMiddleware, async (c) => {
         const severity = SEVERITY_MAP[lr.severityNumber] || lr.severityText || 'INFO';
         const tsNano = lr.timeUnixNano ? BigInt(lr.timeUnixNano) : BigInt(Date.now() * 1_000_000);
         const timestamp = new Date(Number(tsNano / BigInt(1_000_000)));
+        const logAttrs = flattenOtelAttributes(lr.attributes);
 
         logRows.push({
           customer_id: customerId,
@@ -196,15 +201,51 @@ router.post('/logs', authMiddleware, async (c) => {
           severity,
           body: lr.body?.stringValue || (typeof lr.body === 'string' ? lr.body : JSON.stringify(lr.body)),
           resource_attributes: resourceAttrs,
-          log_attributes: flattenOtelAttributes(lr.attributes),
+          log_attributes: logAttrs,
           timestamp,
         });
+
+        // Synthesize a TelemetrySpan from log records that carry span context
+        if (lr.traceId && lr.spanId) {
+          const traceId = lr.traceId;
+          traceIds.add(traceId);
+          const isError = severity === 'ERROR' || severity === 'FATAL';
+          if (isError) errorCount++;
+
+          // Derive a span name from log attributes or body
+          const spanName = logAttrs['name']
+            || logAttrs['operation']
+            || logAttrs['http.method']
+            || lr.body?.stringValue
+            || (typeof lr.body === 'string' ? lr.body : '')
+            || 'log';
+
+          spanRows.push({
+            customer_id: customerId,
+            partner_id: apiToken.customer.partner.id,
+            trace_id: traceId,
+            span_id: lr.spanId,
+            parent_span_id: null,
+            span_name: spanName.length > 200 ? spanName.slice(0, 200) : spanName,
+            span_kind: 'INTERNAL',
+            start_time: timestamp,
+            end_time: null,
+            duration_ms: null,
+            status_code: isError ? 'ERROR' : 'OK',
+            status_message: isError ? (lr.body?.stringValue || null) : null,
+            vendor: vendor.slug,
+            service_name: serviceName,
+            resource_attributes: resourceAttrs,
+            span_attributes: logAttrs,
+            signal_type: 'log',
+          });
+        }
       }
     }
 
     if (logRows.length === 0) continue;
 
-    // Upsert profile for logs too
+    // Upsert profile for logs — now also increment span/trace/error counters
     const now = new Date();
     const [profile] = await db
       .insert(toolProfiles)
@@ -214,12 +255,20 @@ router.post('/logs', authMiddleware, async (c) => {
         vendor: vendor.slug,
         display_name: vendor.displayName,
         vendor_category: vendor.category,
+        total_spans: spanRows.length,
+        total_traces: traceIds.size,
+        total_errors: errorCount,
         first_seen_at: now,
         last_seen_at: now,
       })
       .onConflictDoUpdate({
         target: [toolProfiles.customer_id, toolProfiles.vendor],
         set: {
+          display_name: vendor.displayName,
+          vendor_category: vendor.category,
+          total_spans: sql`"ToolProfile"."total_spans" + ${spanRows.length}`,
+          total_traces: sql`"ToolProfile"."total_traces" + ${traceIds.size}`,
+          total_errors: sql`"ToolProfile"."total_errors" + ${errorCount}`,
           last_seen_at: now,
           updated_at: now,
         },
@@ -232,6 +281,14 @@ router.post('/logs', authMiddleware, async (c) => {
 
     await db.insert(telemetryLogs).values(logRows);
     totalInserted += logRows.length;
+
+    // Insert synthesized spans
+    if (spanRows.length > 0) {
+      for (const row of spanRows) {
+        row.tool_profile_id = profile.id;
+      }
+      await db.insert(telemetrySpans).values(spanRows);
+    }
   }
 
   return c.json({ partialSuccess: { rejectedLogRecords: 0, acceptedLogRecords: totalInserted } });
