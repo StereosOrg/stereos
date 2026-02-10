@@ -305,7 +305,6 @@ function LLMProfileDetail({
   const modelLatency = llmData?.modelLatency || [];
   const topOperations = llmData?.topOperations || [];
   const totals = llmData?.totals || { totalInputTokens: 0, totalOutputTokens: 0, distinctModels: 0, avgDurationMs: 0, avgTokensPerSec: 0, requestCount: 0, errorCount: 0 };
-  const requestCount = totals.requestCount || profile.total_spans;
   const maxDailyRequests = Math.max(1, ...dailyUsage.map((d) => d.request_count));
   const maxHourlyTokens = Math.max(1, ...hourlyTokens.map((h) => Number(h.input_tokens) + Number(h.output_tokens)));
   const maxBucketCount = Math.max(1, ...buckets.map((b) => b.span_count));
