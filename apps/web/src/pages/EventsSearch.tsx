@@ -12,9 +12,11 @@ function eventVendorSlug(event: { type?: string; actor_id?: string; tool?: strin
   return event.actor_id || event.tool || '?';
 }
 
-function EventUserAvatar({ user }: { user: { name?: string | null; image?: string | null; email?: string } | null }) {
+/** User attribution from API: id, name, image (URL), email. Avatar uses the `image` field. */
+function EventUserAvatar({ user }: { user: { id?: string; name?: string | null; image?: string | null; email?: string } | null }) {
   const [imgError, setImgError] = useState(false);
-  const showImg = user?.image && !imgError;
+  const imageUrl = user?.image ?? null;
+  const showImg = imageUrl && !imgError;
   const initial = (user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?').toUpperCase();
   return (
     <div
@@ -33,7 +35,7 @@ function EventUserAvatar({ user }: { user: { name?: string | null; image?: strin
     >
       {showImg ? (
         <img
-          src={user!.image!}
+          src={imageUrl}
           alt=""
           referrerPolicy="no-referrer"
           onError={() => setImgError(true)}

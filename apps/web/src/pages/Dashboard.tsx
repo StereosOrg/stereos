@@ -34,9 +34,11 @@ interface DashboardStats {
   recent_events: DashboardEvent[];
 }
 
+/** Avatar uses the user `image` field URL from the API. */
 function EventUserAvatar({ user }: { user: DashboardEvent['user'] }) {
   const [imgError, setImgError] = useState(false);
-  const showImg = user?.image && !imgError;
+  const imageUrl = user?.image ?? null;
+  const showImg = imageUrl && !imgError;
   const initial = (user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?').toUpperCase();
   return (
     <div
@@ -55,7 +57,7 @@ function EventUserAvatar({ user }: { user: DashboardEvent['user'] }) {
     >
       {showImg ? (
         <img
-          src={user!.image!}
+          src={imageUrl}
           alt=""
           referrerPolicy="no-referrer"
           onError={() => setImgError(true)}
