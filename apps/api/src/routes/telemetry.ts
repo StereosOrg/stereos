@@ -3,7 +3,7 @@ import { toolProfiles, telemetrySpans, telemetryLogs, telemetryMetrics } from '@
 import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
-import { canonicalizeVendor, flattenOtelAttributes, isLLMTool } from '../lib/vendor-map.js';
+import { canonicalizeVendor, flattenOtelAttributes } from '../lib/vendor-map.js';
 import { trackUsage } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
 
@@ -47,7 +47,6 @@ router.post('/traces', authMiddleware, async (c) => {
     const resourceAttrs = flattenOtelAttributes(rs.resource?.attributes);
     const vendor = canonicalizeVendor(resourceAttrs);
     const serviceName = resourceAttrs['service.name'] || null;
-    const isLLM = isLLMTool(resourceAttrs, vendor);
 
     // Upsert ToolProfile
     const now = new Date();
@@ -101,7 +100,6 @@ router.post('/traces', authMiddleware, async (c) => {
 
     if (spanRows.length === 0) continue;
 
-    // Upsert tool profile
     const [profile] = await db
       .insert(toolProfiles)
       .values({
@@ -129,16 +127,11 @@ router.post('/traces', authMiddleware, async (c) => {
       })
       .returning({ id: toolProfiles.id });
 
-    if (!isLLM) {
-      // Set tool_profile_id on all span rows
-      for (const row of spanRows) {
-        row.tool_profile_id = profile.id;
-      }
-
-      // Batch insert spans
-      await db.insert(telemetrySpans).values(spanRows);
-      totalInserted += spanRows.length;
+    for (const row of spanRows) {
+      row.tool_profile_id = profile.id;
     }
+    await db.insert(telemetrySpans).values(spanRows);
+    totalInserted += spanRows.length;
     totalErrors += errorCount;
   }
 
@@ -197,7 +190,6 @@ router.post('/logs', authMiddleware, async (c) => {
     const resourceAttrs = flattenOtelAttributes(rl.resource?.attributes);
     const vendor = canonicalizeVendor(resourceAttrs);
     const serviceName = resourceAttrs['service.name'] || null;
-    const isLLM = isLLMTool(resourceAttrs, vendor);
 
     const logRows: Array<typeof telemetryLogs.$inferInsert> = [];
     const spanRows: Array<typeof telemetrySpans.$inferInsert> = [];
@@ -231,12 +223,12 @@ router.post('/logs', authMiddleware, async (c) => {
           timestamp,
         });
 
-        // Synthesize a TelemetrySpan from log records that carry span context (from any source)
+        // Synthesize a TelemetrySpan from log records that carry span context
         if (severity === 'ERROR' || severity === 'FATAL') {
           logErrorCount++;
         }
 
-        if (!isLLM && traceIdRaw && spanIdRaw) {
+        if (traceIdRaw && spanIdRaw) {
           traceIds.add(traceIdRaw);
           const isError = severity === 'ERROR' || severity === 'FATAL';
           if (isError) errorCount++;
@@ -274,8 +266,9 @@ router.post('/logs', authMiddleware, async (c) => {
 
     if (logRows.length === 0) continue;
 
-    // Upsert profile for logs — now also increment span/trace/error counters
     const now = new Date();
+    const profileSpanCount = spanRows.length;
+    const profileErrorCount = profileSpanCount > 0 ? errorCount : logErrorCount;
     const [profile] = await db
       .insert(toolProfiles)
       .values({
@@ -283,9 +276,9 @@ router.post('/logs', authMiddleware, async (c) => {
         vendor: vendor.slug,
         display_name: vendor.displayName,
         vendor_category: vendor.category,
-        total_spans: isLLM ? 0 : spanRows.length,
+        total_spans: profileSpanCount,
         total_traces: traceIds.size,
-        total_errors: isLLM ? logErrorCount : errorCount,
+        total_errors: profileErrorCount,
         first_seen_at: now,
         last_seen_at: now,
       })
@@ -294,9 +287,9 @@ router.post('/logs', authMiddleware, async (c) => {
         set: {
           display_name: vendor.displayName,
           vendor_category: vendor.category,
-          total_spans: sql`"ToolProfile"."total_spans" + ${isLLM ? 0 : spanRows.length}`,
+          total_spans: sql`"ToolProfile"."total_spans" + ${profileSpanCount}`,
           total_traces: sql`"ToolProfile"."total_traces" + ${traceIds.size}`,
-          total_errors: sql`"ToolProfile"."total_errors" + ${isLLM ? logErrorCount : errorCount}`,
+          total_errors: sql`"ToolProfile"."total_errors" + ${profileErrorCount}`,
           last_seen_at: now,
           updated_at: now,
         },
@@ -310,8 +303,7 @@ router.post('/logs', authMiddleware, async (c) => {
     await db.insert(telemetryLogs).values(logRows);
     totalInserted += logRows.length;
 
-    // Insert synthesized spans (non-LLM only)
-    if (!isLLM && spanRows.length > 0) {
+    if (spanRows.length > 0) {
       for (const row of spanRows) {
         row.tool_profile_id = profile.id;
       }

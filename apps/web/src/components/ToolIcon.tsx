@@ -149,17 +149,22 @@ function OpenAIIcon({ size = 24, className }: { size?: number; className?: strin
 
 // ── Vendor icons for Tool Profiles ─────────────────────────────────────
 
+// Codex logo used for OpenAI (merged vendor: codex + openai)
+const OPENAI_CODEX_LOGO = 'https://images.icon-icons.com/3913/PNG/512/openai_logo_icon_248315.png';
+const CLAUDE_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/claude-color.png';
+const KILO_CODE_LOGO = 'https://www.searchyour.ai/archivos/kilo-code-ai-logo.jpg';
+
 const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number; className?: string }>> = {
   'cloudflare-workers': 'https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/1/cloudflare-workers-icon-jsii6pml8tdp4sy8kgarwe.png/cloudflare-workers-icon-gfyr5fw7aqcwsa1on45oem.png?_a=DATAiZAAZAA0',
-  codex: 'https://images.icon-icons.com/3913/PNG/512/openai_logo_icon_248315.png',
   cursor: CursorIcon,
   vscode: '/vendors/vscode.svg',
   arcade: '/vendors/arcade.svg',
   e2b: '/vendors/e2b.svg',
-  anthropic: ClaudeIcon,
+  anthropic: CLAUDE_LOGO,
   'google-gemini': GeminiIcon,
-  openai: OpenAIIcon,
-  'kilo-code': KiloCodeIcon,
+  openai: OPENAI_CODEX_LOGO,
+  codex: OPENAI_CODEX_LOGO, // legacy: existing profiles may still have vendor=codex
+  'kilo-code': KILO_CODE_LOGO,
 };
 
 // ── LLM Provider metadata for the LLM-focused detail view ──────────────
@@ -174,7 +179,7 @@ export interface LLMProviderInfo {
 export const LLM_PROVIDERS: LLMProviderInfo[] = [
   { slug: 'anthropic', displayName: 'Claude', icon: ClaudeIcon, color: '#D97757' },
   { slug: 'google-gemini', displayName: 'Gemini', icon: GeminiIcon, color: '#4285F4' },
-  { slug: 'openai', displayName: 'OpenAI', icon: OpenAIIcon, color: '#10a37f' },
+  { slug: 'openai', displayName: 'OpenAI', icon: OpenAIIcon, color: '#10a37f' }, // logo in VENDOR_LOGOS is Codex
   { slug: 'kilo-code', displayName: 'Kilo Code', icon: KiloCodeIcon, color: '#00d4aa' },
 ];
 

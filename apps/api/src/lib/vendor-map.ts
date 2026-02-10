@@ -54,17 +54,6 @@ const VENDOR_REGISTRY: VendorDefinition[] = [
     },
   },
   {
-    slug: 'codex',
-    displayName: 'OpenAI Codex',
-    category: 'ide',
-    matcher: (attrs) => {
-      const svc = (attrs['service.name'] || '').toLowerCase();
-      const sdk = (attrs['sdk.name'] || '').toLowerCase();
-      const exe = (attrs['process.executable.name'] || '').toLowerCase();
-      return svc === 'codex' || sdk.includes('codex') || exe.includes('codex');
-    },
-  },
-  {
     slug: 'e2b',
     displayName: 'E2B Sandbox',
     category: 'sandbox',
@@ -109,7 +98,10 @@ const VENDOR_REGISTRY: VendorDefinition[] = [
       const genAiSystem = (attrs['gen_ai.system'] || '').toLowerCase();
       if (genAiSystem === 'openai') return true;
       const svc = (attrs['service.name'] || '').toLowerCase();
+      const sdk = (attrs['sdk.name'] || '').toLowerCase();
+      const exe = (attrs['process.executable.name'] || '').toLowerCase();
       if (svc.includes('openai')) return true;
+      if (svc === 'codex' || sdk.includes('codex') || exe.includes('codex')) return true;
       const model = (attrs['gen_ai.request.model'] || '').toLowerCase();
       if (model.includes('gpt') || model.includes('o1') || model.includes('o3')) return true;
       return false;
