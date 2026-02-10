@@ -26,14 +26,18 @@ FRONTEND_URL = "https://app.trystereos.com"
 enabled = false
 head_sampling_rate = 1
 
+# Without destinations = [...], the Worker never sends data to your Observability Destination (stays "Never run").
+# Use the exact destination name(s) from Workers & Pages → Observability → Destinations.
 [observability.logs]
 enabled = true
+destinations = ["stereos-otlp"]
 head_sampling_rate = 1
 persist = true
 invocation_logs = true
 
 [observability.traces]
-enabled = false
+enabled = true
+destinations = ["stereos-otlp"]
 persist = true
 head_sampling_rate = 1
 

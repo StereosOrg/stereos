@@ -62,6 +62,58 @@ const VENDOR_REGISTRY: VendorDefinition[] = [
       return svc.includes('e2b');
     },
   },
+  {
+    slug: 'anthropic',
+    displayName: 'Anthropic (Claude)',
+    category: 'llm',
+    matcher: (attrs) => {
+      const genAiSystem = (attrs['gen_ai.system'] || '').toLowerCase();
+      if (genAiSystem === 'anthropic' || genAiSystem === 'claude') return true;
+      const svc = (attrs['service.name'] || '').toLowerCase();
+      if (svc.includes('anthropic') || svc.includes('claude')) return true;
+      const model = (attrs['gen_ai.request.model'] || '').toLowerCase();
+      if (model.includes('claude')) return true;
+      return false;
+    },
+  },
+  {
+    slug: 'google-gemini',
+    displayName: 'Google (Gemini)',
+    category: 'llm',
+    matcher: (attrs) => {
+      const genAiSystem = (attrs['gen_ai.system'] || '').toLowerCase();
+      if (genAiSystem === 'gemini' || genAiSystem === 'google') return true;
+      const svc = (attrs['service.name'] || '').toLowerCase();
+      if (svc.includes('gemini')) return true;
+      const model = (attrs['gen_ai.request.model'] || '').toLowerCase();
+      if (model.includes('gemini')) return true;
+      return false;
+    },
+  },
+  {
+    slug: 'openai',
+    displayName: 'OpenAI',
+    category: 'llm',
+    matcher: (attrs) => {
+      const genAiSystem = (attrs['gen_ai.system'] || '').toLowerCase();
+      if (genAiSystem === 'openai') return true;
+      const svc = (attrs['service.name'] || '').toLowerCase();
+      if (svc.includes('openai')) return true;
+      const model = (attrs['gen_ai.request.model'] || '').toLowerCase();
+      if (model.includes('gpt') || model.includes('o1') || model.includes('o3')) return true;
+      return false;
+    },
+  },
+  {
+    slug: 'kilo-code',
+    displayName: 'Kilo Code',
+    category: 'llm',
+    matcher: (attrs) => {
+      const svc = (attrs['service.name'] || '').toLowerCase();
+      const sdk = (attrs['sdk.name'] || '').toLowerCase();
+      return svc.includes('kilo') || sdk.includes('kilo');
+    },
+  },
 ];
 
 function slugify(name: string): string {

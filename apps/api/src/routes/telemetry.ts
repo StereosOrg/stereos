@@ -324,6 +324,80 @@ router.get('/tool-profiles/:profileId/spans', sessionOrTokenAuth, async (c) => {
   return c.json({ spans, limit, offset });
 });
 
+// ── Read: LLM Stats (gen_ai attributes) ─────────────────────────────────
+
+router.get('/tool-profiles/:profileId/llm-stats', sessionOrTokenAuth, async (c) => {
+  const apiToken = c.get('apiToken') as ApiTokenPayload;
+  const db = c.get('db');
+  const customerId = apiToken.customer.id;
+  const profileId = c.req.param('profileId');
+
+  // Verify profile belongs to customer and is an LLM vendor
+  const profile = await db.query.toolProfiles.findFirst({
+    where: and(eq(toolProfiles.id, profileId), eq(toolProfiles.customer_id, customerId)),
+    columns: { id: true, vendor_category: true },
+  });
+
+  if (!profile) {
+    return c.json({ error: 'Tool profile not found' }, 404);
+  }
+
+  // Aggregate model usage from span_attributes
+  const modelUsageResult = await db.execute(sql`
+    SELECT
+      COALESCE(span_attributes->>'gen_ai.request.model', span_attributes->>'gen_ai.response.model', 'unknown') AS model,
+      count(*)::int AS request_count,
+      count(*) FILTER (WHERE status_code = 'ERROR')::int AS error_count,
+      avg(duration_ms)::int AS avg_latency_ms,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.input_tokens')::int, 0))::bigint AS total_input_tokens,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.output_tokens')::int, 0))::bigint AS total_output_tokens,
+      max(start_time) AS last_used
+    FROM "TelemetrySpan"
+    WHERE tool_profile_id = ${profileId}
+    GROUP BY COALESCE(span_attributes->>'gen_ai.request.model', span_attributes->>'gen_ai.response.model', 'unknown')
+    ORDER BY request_count DESC
+  `);
+
+  // Aggregate daily token usage for the chart
+  const dailyUsageResult = await db.execute(sql`
+    SELECT
+      date_trunc('day', start_time) AS day,
+      count(*)::int AS request_count,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.input_tokens')::int, 0))::bigint AS input_tokens,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.output_tokens')::int, 0))::bigint AS output_tokens,
+      count(*) FILTER (WHERE status_code = 'ERROR')::int AS error_count
+    FROM "TelemetrySpan"
+    WHERE tool_profile_id = ${profileId}
+      AND start_time >= ${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)}
+    GROUP BY date_trunc('day', start_time)
+    ORDER BY day ASC
+  `);
+
+  // Aggregate totals
+  const totalsResult = await db.execute(sql`
+    SELECT
+      sum(COALESCE((span_attributes->>'gen_ai.usage.input_tokens')::int, 0))::bigint AS total_input_tokens,
+      sum(COALESCE((span_attributes->>'gen_ai.usage.output_tokens')::int, 0))::bigint AS total_output_tokens,
+      count(DISTINCT span_attributes->>'gen_ai.request.model') FILTER (WHERE span_attributes->>'gen_ai.request.model' IS NOT NULL)::int AS distinct_models
+    FROM "TelemetrySpan"
+    WHERE tool_profile_id = ${profileId}
+  `);
+
+  const modelUsage = Array.isArray(modelUsageResult) ? modelUsageResult : (modelUsageResult as { rows?: unknown[] })?.rows ?? [];
+  const dailyUsage = Array.isArray(dailyUsageResult) ? dailyUsageResult : (dailyUsageResult as { rows?: unknown[] })?.rows ?? [];
+  const totalsRow = Array.isArray(totalsResult) ? totalsResult[0] : (totalsResult as { rows?: unknown[] })?.rows?.[0];
+
+  return c.json({
+    modelUsage,
+    dailyUsage,
+    totals: {
+      totalInputTokens: Number((totalsRow as Record<string, unknown>)?.total_input_tokens ?? 0),
+      totalOutputTokens: Number((totalsRow as Record<string, unknown>)?.total_output_tokens ?? 0),
+      distinctModels: Number((totalsRow as Record<string, unknown>)?.distinct_models ?? 0),
+    },
+  });
+});
+
 router.get('/tool-profiles/:profileId/timeline', sessionOrTokenAuth, async (c) => {
   const apiToken = c.get('apiToken') as ApiTokenPayload;
   const db = c.get('db');

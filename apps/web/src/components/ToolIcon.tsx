@@ -59,6 +59,94 @@ interface ToolIconProps {
   className?: string;
 }
 
+/** Anthropic / Claude logo */
+function ClaudeIcon({ size = 24, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+    >
+      <title>Claude</title>
+      <path
+        d="M15.088 6.412l-4.574 11.09a.396.396 0 01-.378.249.39.39 0 01-.363-.531l4.574-11.09a.396.396 0 01.741.282zM9.266 9.104L5.2 17.345a.396.396 0 01-.73-.305l4.066-8.241a.396.396 0 01.73.305zm5.468 0l4.066 8.241a.396.396 0 01-.73.305l-4.066-8.241a.396.396 0 01.73-.305z"
+        fill="#D97757"
+      />
+    </svg>
+  );
+}
+
+/** Google Gemini logo */
+function GeminiIcon({ size = 24, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+    >
+      <title>Gemini</title>
+      <path
+        d="M12 2C12 7.524 7.524 12 2 12c5.524 0 10 4.476 10 10 0-5.524 4.476-10 10-10-5.524 0-10-4.476-10-10z"
+        fill="url(#gemini_grad)"
+      />
+      <defs>
+        <linearGradient id="gemini_grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#4285F4" />
+          <stop offset="1" stopColor="#A855F7" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+/** Kilo Code logo */
+function KiloCodeIcon({ size = 24, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+    >
+      <title>Kilo Code</title>
+      <rect x="2" y="2" width="20" height="20" rx="4" fill="#1a1a2e" />
+      <text x="12" y="16" textAnchor="middle" fill="#00d4aa" fontSize="12" fontWeight="800" fontFamily="monospace">K</text>
+    </svg>
+  );
+}
+
+/** OpenAI logo */
+function OpenAIIcon({ size = 24, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+    >
+      <title>OpenAI</title>
+      <path
+        d="M22.282 9.821a5.985 5.985 0 00-.516-4.91 6.046 6.046 0 00-6.51-2.9A6.065 6.065 0 0011.17.178a6.046 6.046 0 00-5.764 4.13 5.985 5.985 0 00-3.998 2.9 6.046 6.046 0 00.743 7.097 5.98 5.98 0 00.516 4.911 6.046 6.046 0 006.51 2.9A6.06 6.06 0 0012.83 23.82a6.046 6.046 0 005.764-4.13 5.985 5.985 0 003.998-2.9 6.046 6.046 0 00-.743-7.097"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 // ── Vendor icons for Tool Profiles ─────────────────────────────────────
 
 const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number; className?: string }>> = {
@@ -67,7 +155,27 @@ const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number;
   vscode: '/vendors/vscode.svg',
   arcade: '/vendors/arcade.svg',
   e2b: '/vendors/e2b.svg',
+  anthropic: ClaudeIcon,
+  'google-gemini': GeminiIcon,
+  openai: OpenAIIcon,
+  'kilo-code': KiloCodeIcon,
 };
+
+// ── LLM Provider metadata for the LLM-focused detail view ──────────────
+
+export interface LLMProviderInfo {
+  slug: string;
+  displayName: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  color: string;
+}
+
+export const LLM_PROVIDERS: LLMProviderInfo[] = [
+  { slug: 'anthropic', displayName: 'Claude', icon: ClaudeIcon, color: '#D97757' },
+  { slug: 'google-gemini', displayName: 'Gemini', icon: GeminiIcon, color: '#4285F4' },
+  { slug: 'openai', displayName: 'OpenAI', icon: OpenAIIcon, color: '#10a37f' },
+  { slug: 'kilo-code', displayName: 'Kilo Code', icon: KiloCodeIcon, color: '#00d4aa' },
+];
 
 interface VendorIconProps {
   vendor: string;
