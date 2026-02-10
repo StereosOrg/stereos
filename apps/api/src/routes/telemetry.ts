@@ -4,7 +4,7 @@ import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
 import { canonicalizeVendor, flattenOtelAttributes } from '../lib/vendor-map.js';
-import { trackUsage } from '../lib/stripe.js';
+import { trackTelemetryEventsUsage, trackToolProfilesUsage } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -38,6 +38,11 @@ router.post('/traces', authMiddleware, async (c) => {
   if (!Array.isArray(resourceSpans)) {
     return c.json({ error: 'Missing resourceSpans array' }, 400);
   }
+
+  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+  const existingVendors = new Set(
+    (await db.select({ vendor: toolProfiles.vendor }).from(toolProfiles).where(eq(toolProfiles.customer_id, customerId))).map((r) => r.vendor)
+  );
 
   let totalInserted = 0;
   let totalErrors = 0;
@@ -133,12 +138,15 @@ router.post('/traces', authMiddleware, async (c) => {
     await db.insert(telemetrySpans).values(spanRows);
     totalInserted += spanRows.length;
     totalErrors += errorCount;
+
+    if (!existingVendors.has(vendor.slug)) {
+      existingVendors.add(vendor.slug);
+      await trackToolProfilesUsage(db, customerId, 1, { tool_profile_id: profile.id }, stripeKey);
+    }
   }
 
-  // Track usage
-  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
   if (totalInserted > 0) {
-    await trackUsage(db, customerId, 'telemetry_span', totalInserted, {
+    await trackTelemetryEventsUsage(db, customerId, totalInserted, {
       trace_count: traceIds.size,
     }, stripeKey);
   }
@@ -183,6 +191,11 @@ router.post('/logs', authMiddleware, async (c) => {
   if (!Array.isArray(resourceLogs)) {
     return c.json({ error: 'Missing resourceLogs array', hint: 'OTLP JSON expects root key "resourceLogs".' }, 400);
   }
+
+  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+  const existingVendorsLogs = new Set(
+    (await db.select({ vendor: toolProfiles.vendor }).from(toolProfiles).where(eq(toolProfiles.customer_id, customerId))).map((r) => r.vendor)
+  );
 
   let totalInserted = 0;
 
@@ -309,6 +322,11 @@ router.post('/logs', authMiddleware, async (c) => {
       }
       await db.insert(telemetrySpans).values(spanRows);
     }
+
+    if (!existingVendorsLogs.has(vendor.slug)) {
+      existingVendorsLogs.add(vendor.slug);
+      await trackToolProfilesUsage(db, customerId, 1, { tool_profile_id: profile.id }, stripeKey);
+    }
   }
 
   return c.json({ partialSuccess: { rejectedLogRecords: 0, acceptedLogRecords: totalInserted } });
@@ -334,6 +352,11 @@ router.post('/metrics', authMiddleware, async (c) => {
   if (!Array.isArray(resourceMetrics)) {
     return c.json({ error: 'Missing resourceMetrics array' }, 400);
   }
+
+  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+  const existingVendorsMetrics = new Set(
+    (await db.select({ vendor: toolProfiles.vendor }).from(toolProfiles).where(eq(toolProfiles.customer_id, customerId))).map((r) => r.vendor)
+  );
 
   let totalInserted = 0;
 
@@ -363,6 +386,11 @@ router.post('/metrics', authMiddleware, async (c) => {
         },
       })
       .returning({ id: toolProfiles.id });
+
+    if (!existingVendorsMetrics.has(vendor.slug)) {
+      existingVendorsMetrics.add(vendor.slug);
+      await trackToolProfilesUsage(db, customerId, 1, { tool_profile_id: profile.id }, stripeKey);
+    }
 
     const scopeMetrics = rm.scopeMetrics || [];
     const metricRows: Array<typeof telemetryMetrics.$inferInsert> = [];

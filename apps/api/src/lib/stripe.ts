@@ -6,12 +6,22 @@ import { eq } from 'drizzle-orm';
 // Custom checkout (ui_mode: 'custom') requires 2025-03-31.basil; Stripe Node types may still reference acacia.
 const STRIPE_API_VERSION = '2025-03-31.basil' as '2025-02-24.acacia';
 
-/** Single usage-based plan: $0.12 per unit per month */
-export const USAGE_PRICE_ID = 'price_1SyeufFRJliLrxglZwR0S622';
-const UNIT_PRICE_CENTS = 3; // $0.12 per unit
+// ── Price IDs (must match Stripe Dashboard) ────────────────────────────────
 
-/** Stripe meter event name for provenance events (must match meter in Stripe Dashboard) */
-export const STRIPE_METER_EVENT_NAME = 'provenance_events';
+/** Telemetry Events: metered, $0.0025 per event */
+export const PRICE_ID_TELEMETRY_EVENTS = 'price_1SzCuEFRJliLrxglL7b3fpHW';
+export const TELEMETRY_EVENTS_UNIT_PRICE = 0.0025;
+
+/** Tool profiles: metered, $75.00 per tool profile */
+export const PRICE_ID_TOOL_PROFILES = 'price_1SzCqLFRJliLrxglOMAPx25f';
+export const TOOL_PROFILES_UNIT_PRICE = 75;
+
+/** Flat monthly: $450/mo (recurring line item) */
+export const PRICE_ID_FLAT_MONTHLY = 'price_1SzCv0FRJliLrxglgIuO5cdX';
+
+/** Stripe meter event names (must match meters in Stripe Dashboard) */
+export const STRIPE_METER_EVENT_TELEMETRY_EVENTS = 'telemetry_events';
+export const STRIPE_METER_EVENT_TOOL_PROFILES = 'tool_profiles';
 
 /** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
 export function getStripe(apiKey?: string): Stripe | null {
@@ -40,8 +50,9 @@ export async function createStripeCustomer(email: string, name: string, stripeAp
   return customer.id;
 }
 
-// Report usage to Stripe via the Billing Meter Events API (provenance_events meter).
+/** Report usage to Stripe via the Billing Meter Events API. */
 export async function createStripeMeterEvent(
+  eventName: string,
   stripeCustomerId: string,
   value: number,
   timestamp: Date,
@@ -58,7 +69,7 @@ export async function createStripeMeterEvent(
   }
   try {
     await client.billing.meterEvents.create({
-      event_name: STRIPE_METER_EVENT_NAME,
+      event_name: eventName,
       payload: {
         stripe_customer_id: stripeCustomerId,
         value: String(value),
@@ -71,38 +82,77 @@ export async function createStripeMeterEvent(
   }
 }
 
-// Track usage event. Single plan: $0.12 per unit per month. Records in DB.
-// When reportToStripeMeter is true, also sends to Stripe meter "provenance_events" (call this only when a provenance event is created).
-export async function trackUsage(
+/** Track telemetry events usage. Records in DB and reports to Stripe Telemetry Events meter ($0.0025/event). */
+export async function trackTelemetryEventsUsage(
   db: Database,
   customerId: string,
-  eventType: string,
-  quantity: number = 1,
+  quantity: number,
   metadata?: Record<string, unknown>,
-  stripeApiKey?: string,
-  reportToStripeMeter: boolean = false
+  stripeApiKey?: string
 ): Promise<void> {
-  const totalPrice = (UNIT_PRICE_CENTS * quantity) / 100; // cents -> dollars
-  const idempotencyKey = `${customerId}-${eventType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const totalPrice = TELEMETRY_EVENTS_UNIT_PRICE * quantity;
+  const idempotencyKey = `${customerId}-telemetry_events-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
   await db.insert(usageEvents).values({
     customer_id: customerId,
-    event_type: eventType,
+    event_type: 'telemetry_event',
     idempotency_key: idempotencyKey,
     quantity,
-    unit_price: (UNIT_PRICE_CENTS / 100).toFixed(4),
+    unit_price: TELEMETRY_EVENTS_UNIT_PRICE.toFixed(4),
     total_price: totalPrice.toFixed(4),
-    metadata: { ...metadata },
+    metadata: metadata ? { ...metadata } : {},
   });
 
-  if (reportToStripeMeter) {
-    const customer = await db.query.customers.findFirst({
-      where: eq(customers.id, customerId),
-    });
-    if (customer?.customer_stripe_id) {
-      const now = new Date();
-      await createStripeMeterEvent(customer.customer_stripe_id, quantity, now, idempotencyKey, stripeApiKey);
-    }
+  const customer = await db.query.customers.findFirst({
+    where: eq(customers.id, customerId),
+    columns: { customer_stripe_id: true },
+  });
+  if (customer?.customer_stripe_id) {
+    await createStripeMeterEvent(
+      STRIPE_METER_EVENT_TELEMETRY_EVENTS,
+      customer.customer_stripe_id,
+      quantity,
+      new Date(),
+      idempotencyKey,
+      stripeApiKey
+    );
+  }
+}
+
+/** Track tool profiles usage. Records in DB and reports to Stripe Tool Profiles meter ($75/profile). Call when a new tool profile is created. */
+export async function trackToolProfilesUsage(
+  db: Database,
+  customerId: string,
+  quantity: number,
+  metadata?: Record<string, unknown>,
+  stripeApiKey?: string
+): Promise<void> {
+  const totalPrice = TOOL_PROFILES_UNIT_PRICE * quantity;
+  const idempotencyKey = `${customerId}-tool_profiles-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+  await db.insert(usageEvents).values({
+    customer_id: customerId,
+    event_type: 'tool_profile',
+    idempotency_key: idempotencyKey,
+    quantity,
+    unit_price: TOOL_PROFILES_UNIT_PRICE.toFixed(2),
+    total_price: totalPrice.toFixed(2),
+    metadata: metadata ? { ...metadata } : {},
+  });
+
+  const customer = await db.query.customers.findFirst({
+    where: eq(customers.id, customerId),
+    columns: { customer_stripe_id: true },
+  });
+  if (customer?.customer_stripe_id) {
+    await createStripeMeterEvent(
+      STRIPE_METER_EVENT_TOOL_PROFILES,
+      customer.customer_stripe_id,
+      quantity,
+      new Date(),
+      idempotencyKey,
+      stripeApiKey
+    );
   }
 }
 
@@ -126,8 +176,9 @@ export async function createEmbeddedCheckoutSession(
       customer: stripeCustomerId,
       metadata: { customer_id: customerId },
       line_items: [
-        { price: USAGE_PRICE_ID },
-        { price: 'price_1SyaJ0FRJliLrxglp9L6uTWT', quantity: 1 },
+        { price: PRICE_ID_TELEMETRY_EVENTS },
+        { price: PRICE_ID_TOOL_PROFILES },
+        { price: PRICE_ID_FLAT_MONTHLY, quantity: 1 },
       ],
       subscription_data: {
         trial_period_days: 14,

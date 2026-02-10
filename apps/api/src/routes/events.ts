@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { users, provenanceEvents, artifactLinks, outcomes, telemetrySpans } from '@stereos/shared/schema';
 import { eq, and, desc, sql, inArray, gte, lte } from 'drizzle-orm';
-import { trackUsage } from '../lib/stripe.js';
+import { trackTelemetryEventsUsage } from '../lib/stripe.js';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
 import type { AppVariables } from '../types/app.js';
@@ -92,11 +92,11 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
 
       // Record usage in DB and report to Stripe meter "provenance_events" (1 unit per provenance event)
       const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
-      await trackUsage(db, customerId, 'agent_action', 1, {
+      await trackTelemetryEventsUsage(db, customerId, 1, {
         event_id: event.id,
         actor_id: data.actor_id,
         tool: data.tool,
-      }, stripeKey, true);
+      }, stripeKey);
 
       return c.json({ success: true, event_id: event.id }, 201);
     } else if (data.event_type === 'outcome') {
@@ -110,8 +110,7 @@ router.post('/events', authMiddleware, zValidator('json', eventSchema), async (c
         })
         .returning();
 
-      // Record outcome in usage table only (no Stripe meter — provenance_events meter is for new provenance events only)
-      await trackUsage(db, customerId, 'outcome', 1, {
+      await trackTelemetryEventsUsage(db, customerId, 1, {
         status: data.status,
       });
 
