@@ -107,6 +107,7 @@ export const customers = pgTable('Customer', {
 export const apiTokens = pgTable('ApiToken', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   token: text('token').unique().notNull(),
   name: text('name').notNull(),
   scopes: text('scopes').array().notNull(),
@@ -115,6 +116,7 @@ export const apiTokens = pgTable('ApiToken', {
   last_used: timestamp('last_used', { withTimezone: true }),
 }, (t) => ({
   customerIdx: index('ApiToken_customer_id_idx').on(t.customer_id),
+  userIdx: index('ApiToken_user_id_idx').on(t.user_id),
 }));
 
 export const usageEvents = pgTable('UsageEvent', {
@@ -225,6 +227,7 @@ export const telemetrySpans = pgTable('TelemetrySpan', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
   trace_id: text('trace_id').notNull(),
   span_id: text('span_id').notNull(),
@@ -247,11 +250,13 @@ export const telemetrySpans = pgTable('TelemetrySpan', {
   traceIdx: index('TelemetrySpan_trace_id_idx').on(t.trace_id),
   profileIdx: index('TelemetrySpan_tool_profile_id_idx').on(t.tool_profile_id),
   startTimeIdx: index('TelemetrySpan_start_time_idx').on(t.start_time),
+  userIdx: index('TelemetrySpan_user_id_idx').on(t.user_id),
 }));
 
 export const telemetryLogs = pgTable('TelemetryLog', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
   vendor: text('vendor').notNull(),
   trace_id: text('trace_id'),
@@ -264,6 +269,7 @@ export const telemetryLogs = pgTable('TelemetryLog', {
   ingested_at: timestamp('ingested_at', { withTimezone: true }).defaultNow(),
 }, (t) => ({
   customerIdx: index('TelemetryLog_customer_id_idx').on(t.customer_id),
+  userIdx: index('TelemetryLog_user_id_idx').on(t.user_id),
   vendorIdx: index('TelemetryLog_vendor_idx').on(t.vendor),
   timestampIdx: index('TelemetryLog_timestamp_idx').on(t.timestamp),
 }));
@@ -272,6 +278,7 @@ export const telemetryMetrics = pgTable('TelemetryMetric', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
   vendor: text('vendor').notNull(),
   service_name: text('service_name'),
@@ -295,6 +302,7 @@ export const telemetryMetrics = pgTable('TelemetryMetric', {
   ingested_at: timestamp('ingested_at', { withTimezone: true }).defaultNow(),
 }, (t) => ({
   customerIdx: index('TelemetryMetric_customer_id_idx').on(t.customer_id),
+  userIdx: index('TelemetryMetric_user_id_idx').on(t.user_id),
   profileIdx: index('TelemetryMetric_tool_profile_id_idx').on(t.tool_profile_id),
   vendorIdx: index('TelemetryMetric_vendor_idx').on(t.vendor),
   nameIdx: index('TelemetryMetric_metric_name_idx').on(t.metric_name),
@@ -313,6 +321,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 
 export const apiTokensRelations = relations(apiTokens, ({ one }) => ({
   customer: one(customers, { fields: [apiTokens.customer_id], references: [customers.id] }),
+  user: one(users, { fields: [apiTokens.user_id], references: [users.id] }),
 }));
 
 export const customersRelations = relations(customers, ({ one, many }) => ({

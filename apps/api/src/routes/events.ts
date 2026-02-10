@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { newUuid } from '@stereos/shared/ids';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { users, provenanceEvents, artifactLinks, outcomes } from '@stereos/shared/schema';
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { users, provenanceEvents, artifactLinks, outcomes, telemetrySpans } from '@stereos/shared/schema';
+import { eq, and, desc, sql, inArray, gte, lte } from 'drizzle-orm';
 import { trackUsage } from '../lib/stripe.js';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
@@ -176,35 +176,84 @@ router.get('/provenance/by-file', sessionOrTokenAuth, async (c) => {
   return c.json({ events });
 });
 
-// GET /v1/dashboard - Stats and recent events for the current customer
+// GET /v1/dashboard - Stats and recent events (provenance + spans) for the current customer
 router.get('/dashboard', sessionOrTokenAuth, async (c) => {
   const apiToken = c.get('apiToken') as ApiTokenPayload;
   const db = c.get('db');
   const customerId = apiToken.customer.id;
 
-  const [statsResult, recentList] = await Promise.all([
+  const [statsResult, recentProvenance, recentSpans] = await Promise.all([
     db.execute(sql`
       SELECT
-        (SELECT COUNT(*) FROM "ProvenanceEvent" WHERE customer_id = ${customerId}) AS total_events,
+        (SELECT COUNT(*) FROM "ProvenanceEvent" WHERE customer_id = ${customerId}) AS provenance_count,
+        (SELECT COUNT(*) FROM "TelemetrySpan" WHERE customer_id = ${customerId}) AS span_count,
         (SELECT COUNT(DISTINCT a.commit) FROM "ArtifactLink" a
          INNER JOIN "ProvenanceEvent" e ON e.id = a.event_id
          WHERE e.customer_id = ${customerId} AND a.commit IS NOT NULL AND a.commit != '') AS total_commits,
-        (SELECT COUNT(DISTINCT actor_id) FROM "ProvenanceEvent" WHERE customer_id = ${customerId}) AS active_agents
+        (SELECT COUNT(DISTINCT actor_id) FROM "ProvenanceEvent" WHERE customer_id = ${customerId}) AS provenance_agents,
+        (SELECT COUNT(DISTINCT vendor) FROM "TelemetrySpan" WHERE customer_id = ${customerId}) AS span_vendors
     `),
     db.query.provenanceEvents.findMany({
       where: eq(provenanceEvents.customer_id, customerId),
       with: { artifacts: true, outcomes: true },
       orderBy: desc(provenanceEvents.timestamp),
-      limit: 15,
+      limit: 20,
+    }),
+    db.query.telemetrySpans.findMany({
+      where: eq(telemetrySpans.customer_id, customerId),
+      orderBy: desc(telemetrySpans.start_time),
+      limit: 20,
+      columns: {
+        id: true,
+        span_name: true,
+        vendor: true,
+        start_time: true,
+        user_id: true,
+        tool_profile_id: true,
+        span_attributes: true,
+      },
     }),
   ]);
 
   const statsRow = Array.isArray(statsResult) ? statsResult[0] : (statsResult as { rows?: unknown[] })?.rows?.[0];
-  const total_events = Number((statsRow as Record<string, unknown>)?.total_events ?? 0);
-  const total_commits = Number((statsRow as Record<string, unknown>)?.total_commits ?? 0);
-  const active_agents = Number((statsRow as Record<string, unknown>)?.active_agents ?? 0);
+  const r = statsRow as Record<string, unknown>;
+  const provenanceCount = Number(r?.provenance_count ?? 0);
+  const spanCount = Number(r?.span_count ?? 0);
+  const total_events = provenanceCount + spanCount;
+  const total_commits = Number(r?.total_commits ?? 0);
+  const active_agents = Math.max(
+    Number(r?.provenance_agents ?? 0),
+    Number(r?.span_vendors ?? 0),
+  );
 
-  const userIds = [...new Set(recentList.map((e) => e.user_id).filter(Boolean))] as string[];
+  const provenanceAsEvents = recentProvenance.map((e) => ({
+    id: e.id,
+    type: 'provenance' as const,
+    intent: e.intent,
+    actor_id: e.actor_id,
+    tool: e.tool,
+    model: e.model ?? null,
+    timestamp: e.timestamp,
+    user_id: e.user_id,
+    tool_profile_id: null as string | null,
+  }));
+  const spansAsEvents = recentSpans.map((s) => ({
+    id: `span-${s.id}`,
+    type: 'span' as const,
+    intent: s.span_name,
+    actor_id: s.vendor,
+    tool: s.vendor,
+    model: (s.span_attributes as Record<string, string> | null)?.['gen_ai.request.model'] ?? (s.span_attributes as Record<string, string> | null)?.['gen_ai.response.model'] ?? null,
+    timestamp: s.start_time,
+    user_id: s.user_id,
+    tool_profile_id: s.tool_profile_id,
+  }));
+
+  const merged = [...provenanceAsEvents, ...spansAsEvents]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 15);
+
+  const userIds = [...new Set(merged.map((e) => e.user_id).filter(Boolean))] as string[];
   const userList = userIds.length > 0
     ? await db.query.users.findMany({
         where: inArray(users.id, userIds),
@@ -213,7 +262,7 @@ router.get('/dashboard', sessionOrTokenAuth, async (c) => {
     : [];
   const userMap = Object.fromEntries(userList.map((u: { id: string }) => [u.id, u]));
 
-  const recent_events = recentList.map((event) => ({
+  const recent_events = merged.map((event) => ({
     ...event,
     user: event.user_id ? userMap[event.user_id] ?? null : null,
   }));
@@ -226,50 +275,93 @@ router.get('/dashboard', sessionOrTokenAuth, async (c) => {
   });
 });
 
-// GET /v1/events/search
+// GET /v1/events/search - Provenance events + spans as unified feed (no double request)
 router.get('/events/search', sessionOrTokenAuth, async (c) => {
   const actorId = c.req.query('actor_id');
   const tool = c.req.query('tool');
   const intent = c.req.query('intent');
   const startDate = c.req.query('start_date');
   const endDate = c.req.query('end_date');
-  const limit = parseInt(c.req.query('limit') || '50');
-  const offset = parseInt(c.req.query('offset') || '0');
+  const limit = Math.min(parseInt(c.req.query('limit') || '50') || 50, 100);
+  const offset = parseInt(c.req.query('offset') || '0') || 0;
 
   const apiToken = c.get('apiToken') as ApiTokenPayload;
   const db = c.get('db');
   const customerId = apiToken.customer.id;
 
-  let conditions = [eq(provenanceEvents.customer_id, customerId)];
+  const provConditions = [eq(provenanceEvents.customer_id, customerId)];
+  if (actorId) provConditions.push(eq(provenanceEvents.actor_id, actorId));
+  if (tool) provConditions.push(eq(provenanceEvents.tool, tool));
+  if (intent) provConditions.push(sql`${provenanceEvents.intent} ILIKE ${`%${intent}%`}`);
+  if (startDate) provConditions.push(sql`${provenanceEvents.timestamp} >= ${new Date(startDate)}`);
+  if (endDate) provConditions.push(sql`${provenanceEvents.timestamp} <= ${new Date(endDate)}`);
 
-  if (actorId) {
-    conditions.push(eq(provenanceEvents.actor_id, actorId));
-  }
-  if (tool) {
-    conditions.push(eq(provenanceEvents.tool, tool));
-  }
-  if (intent) {
-    conditions.push(sql`${provenanceEvents.intent} ILIKE ${`%${intent}%`}`);
-  }
-  if (startDate) {
-    conditions.push(sql`${provenanceEvents.timestamp} >= ${new Date(startDate)}`);
-  }
-  if (endDate) {
-    conditions.push(sql`${provenanceEvents.timestamp} <= ${new Date(endDate)}`);
-  }
+  const spanConditions = [eq(telemetrySpans.customer_id, customerId)];
+  if (actorId || tool) spanConditions.push(eq(telemetrySpans.vendor, actorId || tool));
+  if (intent) spanConditions.push(sql`${telemetrySpans.span_name} ILIKE ${`%${intent}%`}`);
+  if (startDate) spanConditions.push(gte(telemetrySpans.start_time, new Date(startDate)));
+  if (endDate) spanConditions.push(lte(telemetrySpans.start_time, new Date(endDate)));
 
-  const events = await db.query.provenanceEvents.findMany({
-    where: and(...conditions),
-    with: {
-      artifacts: true,
-      outcomes: true,
-    },
-    orderBy: desc(provenanceEvents.timestamp),
-    limit,
-    offset,
-  });
+  const fetchLimit = limit + offset + 50;
+  const [provEvents, spanRows] = await Promise.all([
+    db.query.provenanceEvents.findMany({
+      where: and(...provConditions),
+      with: { artifacts: true, outcomes: true },
+      orderBy: desc(provenanceEvents.timestamp),
+      limit: fetchLimit,
+    }),
+    db.query.telemetrySpans.findMany({
+      where: and(...spanConditions),
+      orderBy: desc(telemetrySpans.start_time),
+      limit: fetchLimit,
+      columns: {
+        id: true,
+        span_name: true,
+        vendor: true,
+        start_time: true,
+        user_id: true,
+        tool_profile_id: true,
+        span_attributes: true,
+      },
+    }),
+  ]);
 
-  const userIds = [...new Set(events.map((e: { user_id: string | null }) => e.user_id).filter(Boolean))] as string[];
+  const provenanceAsEvents = provEvents.map((e) => ({
+    ...e,
+    _type: 'provenance' as const,
+    tool_profile_id: null as string | null,
+  }));
+  const spansAsEvents = spanRows.map((s) => ({
+    id: `span-${s.id}`,
+    type: 'span' as const,
+    intent: s.span_name,
+    actor_id: s.vendor,
+    tool: s.vendor,
+    model: (s.span_attributes as Record<string, string> | null)?.['gen_ai.request.model'] ?? (s.span_attributes as Record<string, string> | null)?.['gen_ai.response.model'] ?? null,
+    timestamp: s.start_time,
+    user_id: s.user_id,
+    tool_profile_id: s.tool_profile_id,
+  }));
+
+  const provNormalized = provenanceAsEvents.map((e) => ({
+    id: e.id,
+    type: 'provenance' as const,
+    intent: e.intent,
+    actor_id: e.actor_id,
+    tool: e.tool,
+    model: e.model ?? null,
+    timestamp: e.timestamp,
+    user_id: e.user_id,
+    tool_profile_id: e.tool_profile_id,
+    artifacts: (e as { artifacts?: unknown }).artifacts,
+    outcomes: (e as { outcomes?: unknown }).outcomes,
+  }));
+
+  const merged = [...provNormalized, ...spansAsEvents]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const paginated = merged.slice(offset, offset + limit);
+
+  const userIds = [...new Set(paginated.map((e) => e.user_id).filter(Boolean))] as string[];
   const userList = userIds.length > 0
     ? await db.query.users.findMany({
         where: inArray(users.id, userIds),
@@ -278,7 +370,7 @@ router.get('/events/search', sessionOrTokenAuth, async (c) => {
     : [];
   const userMap = Object.fromEntries(userList.map((u: { id: string }) => [u.id, u]));
 
-  const eventsWithUser = events.map((event: { user_id: string | null; [key: string]: unknown }) => ({
+  const eventsWithUser = paginated.map((event) => ({
     ...event,
     user: event.user_id ? userMap[event.user_id] ?? null : null,
   }));

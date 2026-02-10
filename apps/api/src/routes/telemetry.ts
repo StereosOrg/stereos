@@ -26,6 +26,7 @@ router.post('/traces', authMiddleware, async (c) => {
 
   const customerId = apiToken.customer.id;
   const partnerId = apiToken.customer.partner.id;
+  const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
 
   let body: any;
   try {
@@ -80,6 +81,7 @@ router.post('/traces', authMiddleware, async (c) => {
         spanRows.push({
           customer_id: customerId,
           partner_id: partnerId,
+          user_id: userId,
           trace_id: traceId,
           span_id: span.spanId || '',
           parent_span_id: span.parentSpanId || null,
@@ -161,6 +163,7 @@ router.post('/logs', authMiddleware, async (c) => {
   const db = c.get('db');
 
   const customerId = apiToken.customer.id;
+  const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
 
   const contentType = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
   if (contentType === 'application/x-protobuf' || contentType === 'application/protobuf') {
@@ -220,6 +223,7 @@ router.post('/logs', authMiddleware, async (c) => {
 
         logRows.push({
           customer_id: customerId,
+          user_id: userId,
           vendor: vendor.slug,
           trace_id: traceIdRaw,
           span_id: spanIdRaw,
@@ -251,6 +255,7 @@ router.post('/logs', authMiddleware, async (c) => {
           spanRows.push({
             customer_id: customerId,
             partner_id: apiToken.customer.partner.id,
+            user_id: userId,
             trace_id: traceIdRaw,
             span_id: spanIdRaw,
             parent_span_id: null,
@@ -330,6 +335,7 @@ router.post('/metrics', authMiddleware, async (c) => {
 
   const customerId = apiToken.customer.id;
   const partnerId = apiToken.customer.partner.id;
+  const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
 
   let body: any;
   try {
@@ -398,6 +404,7 @@ router.post('/metrics', authMiddleware, async (c) => {
           metricRows.push({
             customer_id: customerId,
             partner_id: partnerId,
+            user_id: userId,
             tool_profile_id: profile.id,
             vendor: vendor.slug,
             service_name: serviceName,

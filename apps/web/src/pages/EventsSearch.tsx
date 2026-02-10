@@ -118,10 +118,14 @@ export function EventsSearch() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {data.events.map((event: any) => (
+              {data.events.map((event: any) => {
+                const href = event.type === 'span' && event.tool_profile_id
+                  ? `/tools/${event.tool_profile_id}`
+                  : `/events/${event.id}`;
+                return (
                 <Link
                   key={event.id}
-                  to={`/events/${event.id}`}
+                  to={href}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -221,6 +225,17 @@ export function EventsSearch() {
                       {event.actor_id} · {event.tool}
                       {event.model ? ` · ${event.model}` : ''}
                     </p>
+                    {event.user && (
+                      <p
+                        style={{
+                          margin: '4px 0 0',
+                          fontSize: '12px',
+                          color: '#888',
+                        }}
+                      >
+                        By {event.user.name || event.user.email || 'Unknown'}
+                      </p>
+                    )}
                   </div>
                   <div
                     style={{
@@ -232,7 +247,8 @@ export function EventsSearch() {
                     {new Date(event.timestamp).toLocaleString()}
                   </div>
                 </Link>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

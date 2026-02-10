@@ -7,11 +7,13 @@ import { StereosLogo } from '../components/StereosLogo';
 
 interface DashboardEvent {
   id: string;
+  type?: 'provenance' | 'span';
   intent: string;
   actor_id: string;
   tool: string;
-  model?: string;
+  model?: string | null;
   timestamp: string;
+  tool_profile_id?: string | null;
   user?: { id: string; name: string | null; image: string | null; email: string } | null;
 }
 
@@ -126,10 +128,14 @@ export function Dashboard() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {stats.recent_events.map((event) => (
+              {stats.recent_events.map((event) => {
+                const href = event.type === 'span' && event.tool_profile_id
+                  ? `/tools/${event.tool_profile_id}`
+                  : `/events/${event.id}`;
+                return (
                 <Link
                   key={event.id}
-                  to={`/events/${event.id}`}
+                  to={href}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -197,12 +203,18 @@ export function Dashboard() {
                       {event.actor_id} · {event.tool}
                       {event.model ? ` · ${event.model}` : ''}
                     </p>
+                    {event.user && (
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+                        By {event.user.name || event.user.email || 'Unknown'}
+                      </p>
+                    )}
                   </div>
                   <span style={{ fontSize: '13px', color: '#666', flexShrink: 0 }}>
                     {new Date(event.timestamp).toLocaleString()}
                   </span>
                 </Link>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

@@ -3,6 +3,8 @@ import { partners, customers, apiTokens, verifications, users, sessions, account
 import { newSessionToken, newUuid, newCustomerId, newApiToken } from '@stereos/shared/ids';
 import { eq, and, gt } from 'drizzle-orm';
 import { createStripeCustomer } from '../lib/stripe.js';
+import { sessionOrTokenAuth } from '../lib/api-token.js';
+import type { ApiTokenPayload } from '../lib/api-token.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -144,11 +146,13 @@ router.post('/customers/register', async (c) => {
   }
 });
 
-// Create API token
-router.post('/tokens', async (c) => {
+// Create API token (requires session or API token; user_id set from current user/customer owner)
+router.post('/tokens', sessionOrTokenAuth, async (c) => {
   const body = await c.req.json();
   const { customer_id, name, scopes } = body;
   const db = c.get('db');
+  const apiTokenPayload = c.get('apiToken') as ApiTokenPayload;
+  const userId = apiTokenPayload.user_id ?? apiTokenPayload.customer?.user_id ?? null;
 
   try {
     const token = newApiToken();
@@ -157,6 +161,7 @@ router.post('/tokens', async (c) => {
       .insert(apiTokens)
       .values({
         customer_id,
+        user_id: userId,
         token,
         name,
         scopes: scopes || ['events:write', 'events:read'],

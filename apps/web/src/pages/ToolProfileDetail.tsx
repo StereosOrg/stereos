@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Brain, Zap, AlertTriangle, Clock, Activity, ChevronDown, ChevronRight, Hash, Gauge, TrendingUp, Layers, BarChart3, List } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, Clock, Activity, ChevronDown, ChevronRight, Hash, Gauge, TrendingUp, Layers, BarChart3, List, User, DollarSign } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { VendorIcon } from '../components/ToolIcon';
 
@@ -120,16 +120,18 @@ interface LLMStats {
   };
 }
 
-const LLM_CATEGORIES = ['llm'];
-
-function isLLMProvider(vendorCategory: string | null): boolean {
-  return LLM_CATEGORIES.includes(vendorCategory || '');
-}
-
 function formatTokenCount(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
   return count.toLocaleString();
+}
+
+// Rough estimate: $3/1M input, $15/1M output (ballpark for Claude/GPT)
+function estimateCostFromTokens(inputTokens: number, outputTokens: number): string | null {
+  if (inputTokens <= 0 && outputTokens <= 0) return null;
+  const cost = (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15;
+  if (cost < 0.01) return '<$0.01';
+  return `$${cost.toFixed(2)}`;
 }
 
 function formatDuration(ms: number): string {
@@ -419,39 +421,28 @@ function LLMProfileDetail({
 
       {activeTab === 'metrics' && (
         <>
-      {/* Stats row - 6 cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px', marginBottom: '32px' }}>
+      {/* Summary cards: Total LLM Tokens, Most Active User, Estimated Costs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
         <div className="card" style={{ textAlign: 'center' }}>
-          <Zap size={20} style={{ color: '#f59e0b', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>{requestCount.toLocaleString()}</div>
-          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Total Requests</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <Activity size={20} style={{ color: '#3b82f6', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>{formatTokenCount(totals.totalInputTokens)}</div>
-          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Input Tokens</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <Activity size={20} style={{ color: '#8b5cf6', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>{formatTokenCount(totals.totalOutputTokens)}</div>
-          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Output Tokens</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <TrendingUp size={20} style={{ color: '#06b6d4', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>{totals.avgTokensPerSec > 0 ? `${totals.avgTokensPerSec}` : '—'}</div>
-          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Tokens/sec</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <AlertTriangle size={20} style={{ color: Number(errorRate) > 5 ? '#c0392b' : '#888', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800, color: Number(errorRate) > 5 ? '#c0392b' : 'var(--dark)' }}>
-            {errorRate}%
+          <Hash size={20} style={{ color: '#8b5cf6', marginBottom: '8px' }} />
+          <div style={{ fontSize: '28px', fontWeight: 800 }}>
+            {formatTokenCount(totals.totalInputTokens + totals.totalOutputTokens)}
           </div>
-          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Error Rate</div>
+          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Total LLM Tokens Consumed</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
-          <Clock size={20} style={{ color: '#10b981', marginBottom: '8px' }} />
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>{formatDuration(latency?.avg || totals.avgDurationMs || 0)}</div>
-          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Avg Latency</div>
+          <User size={20} style={{ color: '#3b82f6', marginBottom: '8px' }} />
+          <div style={{ fontSize: '28px', fontWeight: 800 }}>—</div>
+          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Most Active User</div>
+          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>Requires user attribution in telemetry</div>
+        </div>
+        <div className="card" style={{ textAlign: 'center' }}>
+          <DollarSign size={20} style={{ color: '#10b981', marginBottom: '8px' }} />
+          <div style={{ fontSize: '28px', fontWeight: 800 }}>
+            {estimateCostFromTokens(totals.totalInputTokens, totals.totalOutputTokens) ?? '—'}
+          </div>
+          <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Estimated Costs</div>
+          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>Approximate from token usage</div>
         </div>
       </div>
 
@@ -910,293 +901,6 @@ function LLMProfileDetail({
   );
 }
 
-// ── Standard (non-LLM) detail view ──────────────────────────────────────
-
-function StandardProfileDetail({
-  profile,
-  latency,
-  buckets,
-  spans,
-  metrics,
-}: {
-  profile: ToolProfile;
-  latency: Latency | undefined;
-  buckets: TimelineBucket[];
-  spans: Span[];
-  metrics: CustomMetric[];
-}) {
-  const [activeTab, setActiveTab] = useState<'metrics' | 'logs'>('metrics');
-  const errorRate = profile.total_spans > 0 ? ((profile.total_errors / profile.total_spans) * 100).toFixed(1) : '0.0';
-  const maxSpanCount = Math.max(1, ...buckets.map((b) => b.span_count));
-
-  return (
-    <div>
-      {/* Back link */}
-      <Link to="/tools" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: 'var(--dark)', fontWeight: 700, textDecoration: 'none' }}>
-        <ArrowLeft size={20} /> Back to Tools
-      </Link>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
-        <VendorIcon vendor={profile.vendor} displayName={profile.display_name} size={56} />
-        <div>
-          <h1 className="heading-1" style={{ marginBottom: '4px' }}>{profile.display_name}</h1>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            {profile.vendor_category && (
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  padding: '2px 8px',
-                  background: 'var(--bg-mint)',
-                  border: '2px solid var(--border-color)',
-                }}
-              >
-                {profile.vendor_category}
-              </span>
-            )}
-            {profile.first_seen_at && (
-              <span style={{ fontSize: '13px', color: '#888' }}>
-                First seen {new Date(profile.first_seen_at).toLocaleDateString()}
-              </span>
-            )}
-            {profile.last_seen_at && (
-              <span style={{ fontSize: '13px', color: '#888' }}>
-                Last seen {new Date(profile.last_seen_at).toLocaleString()}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Tab switcher */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '0',
-          marginBottom: '24px',
-          border: '2px solid var(--border-color)',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          width: 'fit-content',
-          background: 'var(--bg-cream)',
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setActiveTab('metrics')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 20px',
-            fontWeight: 700,
-            fontSize: '14px',
-            border: 'none',
-            background: activeTab === 'metrics' ? 'var(--bg-white)' : 'transparent',
-            color: activeTab === 'metrics' ? 'var(--dark)' : '#666',
-            boxShadow: activeTab === 'metrics' ? '2px 2px 0 var(--border-color)' : 'none',
-            borderRight: activeTab === 'metrics' ? '2px solid var(--border-color)' : '1px solid var(--border-color)',
-            cursor: 'pointer',
-          }}
-        >
-          <BarChart3 size={18} /> Metrics
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('logs')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 20px',
-            fontWeight: 700,
-            fontSize: '14px',
-            border: 'none',
-            background: activeTab === 'logs' ? 'var(--bg-white)' : 'transparent',
-            color: activeTab === 'logs' ? 'var(--dark)' : '#666',
-            boxShadow: activeTab === 'logs' ? '2px 2px 0 var(--border-color)' : 'none',
-            borderLeft: activeTab === 'logs' ? 'none' : '1px solid var(--border-color)',
-            cursor: 'pointer',
-          }}
-        >
-          <List size={18} /> Logs
-        </button>
-      </div>
-
-      {activeTab === 'metrics' && (
-        <>
-      {/* Stats row */}
-      <div className="grid-3" style={{ marginBottom: '32px' }}>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', fontWeight: 800 }}>{profile.total_spans.toLocaleString()}</div>
-          <div style={{ fontSize: '14px', color: '#555', fontWeight: 600 }}>Total Spans</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', fontWeight: 800, color: Number(errorRate) > 5 ? '#c0392b' : 'var(--dark)' }}>
-            {errorRate}%
-          </div>
-          <div style={{ fontSize: '14px', color: '#555', fontWeight: 600 }}>Error Rate</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', fontWeight: 800 }}>{Math.round(latency?.avg || 0)}ms</div>
-          <div style={{ fontSize: '14px', color: '#555', fontWeight: 600 }}>Avg Latency</div>
-        </div>
-      </div>
-
-      {/* Activity Timeline */}
-      {buckets.length > 0 && (
-        <div className="card" style={{ marginBottom: '32px' }}>
-          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Activity (last 24h)</h3>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '120px' }}>
-            {buckets.map((bucket, i) => {
-              const height = Math.max(4, (bucket.span_count / maxSpanCount) * 100);
-              const errorRatio = bucket.span_count > 0 ? bucket.error_count / bucket.span_count : 0;
-              return (
-                <div
-                  key={i}
-                  title={`${new Date(bucket.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${bucket.span_count} spans, ${bucket.error_count} errors`}
-                  style={{
-                    flex: 1,
-                    height: `${height}%`,
-                    background: errorRatio > 0.1 ? '#c0392b' : 'var(--dark)',
-                    border: '1px solid var(--border-color)',
-                    minWidth: '4px',
-                    transition: 'height 0.3s ease',
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Latency bars */}
-      {latency && latency.p99 > 0 && (
-        <div className="card" style={{ marginBottom: '32px' }}>
-          <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Latency Distribution</h3>
-          {(['p50', 'p95', 'p99'] as const).map((key) => {
-            const value = latency[key];
-            const pct = latency.p99 > 0 ? Math.max(2, (value / latency.p99) * 100) : 0;
-            return (
-              <div key={key} style={{ marginBottom: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>
-                  <span style={{ textTransform: 'uppercase' }}>{key}</span>
-                  <span>{Math.round(value)}ms</span>
-                </div>
-                <div style={{ height: '12px', background: 'var(--bg-cream)', border: '2px solid var(--border-color)' }}>
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${pct}%`,
-                      background: key === 'p99' ? '#c0392b' : key === 'p95' ? 'var(--bg-lavender)' : 'var(--bg-mint)',
-                      transition: 'width 0.3s ease',
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Custom Metrics */}
-      <div className="card" style={{ marginBottom: '32px' }}>
-        <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>
-          <Layers size={16} style={{ verticalAlign: 'middle', marginRight: '8px', marginTop: '-2px' }} />
-          Custom Metrics
-        </h3>
-        {metrics.length === 0 ? (
-          <p style={{ color: '#888' }}>No custom metrics recorded yet.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ borderBottom: '3px solid var(--border-color)', textAlign: 'left' }}>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Metric</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Type</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Last Value</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Points</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Last Seen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((metric) => (
-                  <tr key={`${metric.metric_name}-${metric.metric_type}`} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>{metric.metric_name}</td>
-                    <td style={{ padding: '8px 12px', color: '#888' }}>{metric.metric_type}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{formatMetricValue(metric.last_value, metric.unit)}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{metric.datapoints.toLocaleString()}</td>
-                    <td style={{ padding: '8px 12px', color: '#888', whiteSpace: 'nowrap' }}>
-                      {new Date(metric.last_time).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-        </>
-      )}
-
-      {activeTab === 'logs' && (
-      <div className="card">
-        <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Recent Spans</h3>
-        {spans.length === 0 ? (
-          <p style={{ color: '#888' }}>No spans recorded yet.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ borderBottom: '3px solid var(--border-color)', textAlign: 'left' }}>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Name</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Kind</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Duration</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Status</th>
-                  <th style={{ padding: '8px 12px', fontWeight: 700 }}>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {spans.map((span) => (
-                  <tr key={span.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {span.span_name}
-                    </td>
-                    <td style={{ padding: '8px 12px', color: '#888' }}>{span.span_kind || '—'}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>
-                      {span.duration_ms != null ? `${span.duration_ms}ms` : '—'}
-                    </td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          background: span.status_code === 'ERROR' ? '#fde8e8' : span.status_code === 'OK' ? '#e8fde8' : '#f0f0f0',
-                          color: span.status_code === 'ERROR' ? '#c0392b' : span.status_code === 'OK' ? '#27ae60' : '#888',
-                          border: '1px solid currentColor',
-                        }}
-                      >
-                        {span.status_code || 'UNSET'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '8px 12px', color: '#888', whiteSpace: 'nowrap' }}>
-                      {new Date(span.start_time).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      )}
-    </div>
-  );
-}
-
 // ── Main export ─────────────────────────────────────────────────────────
 
 export function ToolProfileDetail() {
@@ -1290,21 +994,8 @@ export function ToolProfileDetail() {
     );
   }
 
-  // Conditionally render LLM-focused view
-  if (isLLMProvider(profile.vendor_category)) {
-    return (
-      <LLMProfileDetail
-        profile={profile}
-        latency={latency}
-        buckets={buckets}
-        spans={spans}
-        metrics={metrics}
-      />
-    );
-  }
-
   return (
-    <StandardProfileDetail
+    <LLMProfileDetail
       profile={profile}
       latency={latency}
       buckets={buckets}
