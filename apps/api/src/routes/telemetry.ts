@@ -192,12 +192,15 @@ router.post('/logs', authMiddleware, async (c) => {
         const tsNano = lr.timeUnixNano ? BigInt(lr.timeUnixNano) : BigInt(Date.now() * 1_000_000);
         const timestamp = new Date(Number(tsNano / BigInt(1_000_000)));
         const logAttrs = flattenOtelAttributes(lr.attributes);
+        // Support both camelCase (OTLP JSON) and snake_case, and fallback to attributes
+        const traceIdRaw = lr.traceId ?? (lr as { trace_id?: string }).trace_id ?? logAttrs['trace_id'] ?? logAttrs['traceId'] ?? null;
+        const spanIdRaw = lr.spanId ?? (lr as { span_id?: string }).span_id ?? logAttrs['span_id'] ?? logAttrs['spanId'] ?? null;
 
         logRows.push({
           customer_id: customerId,
           vendor: vendor.slug,
-          trace_id: lr.traceId || null,
-          span_id: lr.spanId || null,
+          trace_id: traceIdRaw,
+          span_id: spanIdRaw,
           severity,
           body: lr.body?.stringValue || (typeof lr.body === 'string' ? lr.body : JSON.stringify(lr.body)),
           resource_attributes: resourceAttrs,
@@ -205,10 +208,9 @@ router.post('/logs', authMiddleware, async (c) => {
           timestamp,
         });
 
-        // Synthesize a TelemetrySpan from log records that carry span context
-        if (lr.traceId && lr.spanId) {
-          const traceId = lr.traceId;
-          traceIds.add(traceId);
+        // Synthesize a TelemetrySpan from log records that carry span context (from any source)
+        if (traceIdRaw && spanIdRaw) {
+          traceIds.add(traceIdRaw);
           const isError = severity === 'ERROR' || severity === 'FATAL';
           if (isError) errorCount++;
 
@@ -223,8 +225,8 @@ router.post('/logs', authMiddleware, async (c) => {
           spanRows.push({
             customer_id: customerId,
             partner_id: apiToken.customer.partner.id,
-            trace_id: traceId,
-            span_id: lr.spanId,
+            trace_id: traceIdRaw,
+            span_id: spanIdRaw,
             parent_span_id: null,
             span_name: spanName.length > 200 ? spanName.slice(0, 200) : spanName,
             span_kind: 'INTERNAL',
