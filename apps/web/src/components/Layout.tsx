@@ -29,7 +29,7 @@ export function Layout() {
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
-    { path: '/ingest', label: 'Global Ingest', icon: Funnel },
+    { path: '/ingest', label: 'Ingestion', icon: Funnel },
     ...(isAdmin ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
