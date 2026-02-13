@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, boolean, uuid, jsonb, integer, decimal, doublePrecision, pgEnum, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // ── Better Auth core tables ──────────────────────────────────────────────
 
@@ -100,11 +100,12 @@ export const teams = pgTable('Team', {
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   profile_pic: text('profile_pic'),
+  archived_at: timestamp('archived_at', { withTimezone: true }),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
 }, (t) => ({
   customerIdx: index('Team_customer_id_idx').on(t.customer_id),
-  customerNameIdx: uniqueIndex('Team_customer_name_idx').on(t.customer_id, t.name),
+  customerNameIdx: uniqueIndex('Team_customer_name_idx').on(t.customer_id, t.name).where(sql`${t.archived_at} IS NULL`),
 }));
 
 export const teamMembers = pgTable('TeamMember', {

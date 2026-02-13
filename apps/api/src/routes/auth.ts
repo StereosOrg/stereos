@@ -182,6 +182,7 @@ router.get('/tokens', sessionOrTokenAuth, async (c) => {
       created_at: true,
       last_used: true,
       user_id: true,
+      team_id: true,
     },
   });
 

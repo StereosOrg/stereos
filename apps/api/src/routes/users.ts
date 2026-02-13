@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { users, usageEvents, customers, telemetrySpans, teamMembers, teams } from '@stereos/shared/schema';
-import { eq, desc, sql, and } from 'drizzle-orm';
+import { eq, desc, sql, and, isNull } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
@@ -44,24 +44,28 @@ const requireAuth = async (c: any, next: any) => {
 router.get('/users', requireAdmin, async (c) => {
   try {
     const db = c.get('db');
-    const allUsers = await db.query.users.findMany({
-      columns: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        createdAt: true,
-        image: true,
-      },
-      orderBy: desc(users.createdAt),
-    });
+    const allUsers = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        createdAt: users.createdAt,
+        image: users.image,
+      })
+      .from(users)
+      .orderBy(desc(users.createdAt));
     const memberships = await db.select({
       user_id: teamMembers.user_id,
       team_id: teamMembers.team_id,
       team_name: teams.name,
-    }).from(teamMembers).leftJoin(teams, eq(teamMembers.team_id, teams.id));
+      archived_at: teams.archived_at,
+    })
+      .from(teamMembers)
+      .leftJoin(teams, eq(teamMembers.team_id, teams.id));
     const teamByUser = new Map<string, { team_id: string; team_name: string | null }>();
     for (const m of memberships) {
+      if (m.archived_at != null) continue;
       if (!teamByUser.has(m.user_id)) {
         teamByUser.set(m.user_id, { team_id: m.team_id, team_name: m.team_name });
       }
@@ -209,12 +213,15 @@ router.get('/users/:userId/profile', requireAuth, async (c) => {
       ORDER BY start_time DESC
       LIMIT 10
     `);
-    const recentDiffs = sqlRows(recentDiffsResult).map((r) => ({
-      id: String(r.id),
-      vendor: String(r.vendor),
-      start_time: r.start_time as string,
-      diff: String(r.diff ?? ''),
-    }));
+    const recentDiffs = sqlRows(recentDiffsResult).map((r) => {
+      const row = r as Record<string, unknown>;
+      return {
+        id: String(row.id),
+        vendor: String(row.vendor),
+        start_time: row.start_time as string,
+        diff: String(row.diff ?? ''),
+      };
+    });
 
     return c.json({
       profile: {
@@ -349,7 +356,10 @@ router.patch('/users/:userId/team', requireAdmin, async (c) => {
   await db.delete(teamMembers).where(eq(teamMembers.user_id, userId));
 
   if (teamId) {
-    const team = await db.query.teams.findFirst({ where: eq(teams.id, teamId), columns: { id: true, name: true } });
+    const team = await db.query.teams.findFirst({
+      where: and(eq(teams.id, teamId), isNull(teams.archived_at)),
+      columns: { id: true, name: true },
+    });
     if (!team) return c.json({ error: 'Team not found' }, 404);
 
     if (user.role !== 'manager' && user.role !== 'admin') {

@@ -8,6 +8,7 @@ interface Team {
   id: string;
   name: string;
   profile_pic: string | null;
+  archived_at?: string | null;
 }
 
 interface User {
@@ -22,7 +23,7 @@ export function Teams() {
   const { data: teamsData, isLoading } = useQuery<{ teams: Team[] }>({
     queryKey: ['teams'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/teams`, { credentials: 'include', headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/v1/teams?include_archived=1`, { credentials: 'include', headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Failed to fetch teams');
       return res.json();
     },
@@ -43,6 +44,8 @@ export function Teams() {
   const [managerId, setManagerId] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [unarchiving, setUnarchiving] = useState<string | null>(null);
 
   const createTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +69,48 @@ export function Teams() {
       setError(err instanceof Error ? err.message : 'Failed to create team');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteTeam = async (teamId: string, teamName: string) => {
+    const confirmed = window.confirm(`Archive team "${teamName}"? You can’t use it after archiving.`);
+    if (!confirmed) return;
+    setError('');
+    setDeleting(teamId);
+    try {
+      const res = await fetch(`${API_BASE}/v1/teams/${teamId}`, {
+        method: 'DELETE',
+        headers: { ...getAuthHeaders() },
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to archive team');
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive team');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const unarchiveTeam = async (teamId: string, teamName: string) => {
+    const confirmed = window.confirm(`Unarchive team "${teamName}"?`);
+    if (!confirmed) return;
+    setError('');
+    setUnarchiving(teamId);
+    try {
+      const res = await fetch(`${API_BASE}/v1/teams/${teamId}/unarchive`, {
+        method: 'PATCH',
+        headers: { ...getAuthHeaders() },
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to unarchive team');
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unarchive team');
+    } finally {
+      setUnarchiving(null);
     }
   };
 
@@ -142,9 +187,27 @@ export function Teams() {
           <tbody>
             {teams.map((t) => (
               <tr key={t.id} style={{ borderBottom: 'var(--border-width) solid var(--border-color)' }}>
-                <td style={{ padding: '12px 16px', fontWeight: 600 }}>{t.name}</td>
+                <td style={{ padding: '12px 16px', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{t.name}</span>
+                    {t.archived_at && (
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Archived</span>
+                    )}
+                  </div>
+                </td>
                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                  <Link to={`/teams/${t.id}`} className="btn btn-primary" style={{ textDecoration: 'none' }}>View</Link>
+                  <div style={{ display: 'inline-flex', gap: '8px' }}>
+                    <Link to={`/teams/${t.id}`} className="btn btn-primary" style={{ textDecoration: 'none' }}>View</Link>
+                    {t.archived_at ? (
+                      <button className="btn" type="button" onClick={() => unarchiveTeam(t.id, t.name)} disabled={unarchiving === t.id}>
+                        {unarchiving === t.id ? 'Unarchiving…' : 'Unarchive'}
+                      </button>
+                    ) : (
+                      <button className="btn" type="button" onClick={() => deleteTeam(t.id, t.name)} disabled={deleting === t.id}>
+                        {deleting === t.id ? 'Archiving…' : 'Archive'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

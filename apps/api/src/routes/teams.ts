@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, sql, desc } from 'drizzle-orm';
+import { and, eq, sql, desc, isNull } from 'drizzle-orm';
 import { teams, teamMembers, users, telemetrySpans } from '@stereos/shared/schema';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
 import { sessionOrTokenAuth } from '../lib/api-token.js';
@@ -51,10 +51,12 @@ router.get('/teams', requireAuth, async (c) => {
   const user = c.get('user') as { id: string; role?: string };
   const customer = await getCustomerForUser(c as any, user.id);
   if (!customer) return c.json({ error: 'Customer not found' }, 403);
+  const includeArchived = c.req.query('include_archived') === '1';
 
   if (user.role === 'admin') {
     const rows = await db.select().from(teams).where(eq(teams.customer_id, customer.id));
-    return c.json({ teams: rows });
+    const filtered = includeArchived ? rows : rows.filter((team) => team.archived_at == null);
+    return c.json({ teams: filtered });
   }
 
   if (user.role === 'manager') {
@@ -65,11 +67,15 @@ router.get('/teams', requireAuth, async (c) => {
       customer_id: teams.customer_id,
       created_at: teams.created_at,
       updated_at: teams.updated_at,
+      archived_at: teams.archived_at,
     })
       .from(teamMembers)
       .leftJoin(teams, eq(teamMembers.team_id, teams.id))
       .where(eq(teamMembers.user_id, user.id));
-    return c.json({ teams: rows });
+    const filtered = rows.filter((team) => team.archived_at == null);
+    return c.json({
+      teams: filtered.map(({ archived_at, ...rest }) => rest),
+    });
   }
 
   return c.json({ error: 'Forbidden' }, 403);
@@ -121,7 +127,7 @@ router.get('/teams/:teamId', requireAuth, async (c) => {
   const team = await db.query.teams.findFirst({
     where: eq(teams.id, teamId),
   });
-  if (!team) return c.json({ error: 'Team not found' }, 404);
+  if (!team || team.archived_at) return c.json({ error: 'Team not found' }, 404);
   return c.json({ team });
 });
 
@@ -133,9 +139,49 @@ router.patch('/teams/:teamId', requireAdmin, async (c) => {
   if (body.name != null) updates.name = String(body.name).trim();
   if (body.profile_pic != null) updates.profile_pic = String(body.profile_pic).trim() || null;
 
-  const [updated] = await db.update(teams).set(updates).where(eq(teams.id, teamId)).returning();
+  const [updated] = await db.update(teams).set(updates).where(and(eq(teams.id, teamId), isNull(teams.archived_at))).returning();
   if (!updated) return c.json({ error: 'Team not found' }, 404);
   return c.json({ team: updated });
+});
+
+router.delete('/teams/:teamId', requireAdmin, async (c) => {
+  const db = c.get('db');
+  const user = c.get('user') as { id: string };
+  const teamId = c.req.param('teamId');
+  const customer = await getCustomerForUser(c as any, user.id);
+  if (!customer) return c.json({ error: 'Customer not found' }, 403);
+
+  const team = await db.query.teams.findFirst({ where: eq(teams.id, teamId) });
+  if (!team || team.archived_at) return c.json({ error: 'Team not found' }, 404);
+  if (team.customer_id !== customer.id) return c.json({ error: 'Forbidden' }, 403);
+
+  const [archived] = await db
+    .update(teams)
+    .set({ archived_at: new Date() })
+    .where(eq(teams.id, teamId))
+    .returning();
+  if (!archived) return c.json({ error: 'Team not found' }, 404);
+  return c.json({ team: archived });
+});
+
+router.patch('/teams/:teamId/unarchive', requireAdmin, async (c) => {
+  const db = c.get('db');
+  const user = c.get('user') as { id: string };
+  const teamId = c.req.param('teamId');
+  const customer = await getCustomerForUser(c as any, user.id);
+  if (!customer) return c.json({ error: 'Customer not found' }, 403);
+
+  const team = await db.query.teams.findFirst({ where: eq(teams.id, teamId) });
+  if (!team) return c.json({ error: 'Team not found' }, 404);
+  if (team.customer_id !== customer.id) return c.json({ error: 'Forbidden' }, 403);
+
+  const [unarchived] = await db
+    .update(teams)
+    .set({ archived_at: null })
+    .where(eq(teams.id, teamId))
+    .returning();
+  if (!unarchived) return c.json({ error: 'Team not found' }, 404);
+  return c.json({ team: unarchived });
 });
 
 router.get('/teams/:teamId/profile', requireAuth, async (c) => {
@@ -149,7 +195,7 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
   }
 
   const team = await db.query.teams.findFirst({ where: eq(teams.id, teamId) });
-  if (!team) return c.json({ error: 'Team not found' }, 404);
+  if (!team || team.archived_at) return c.json({ error: 'Team not found' }, 404);
 
   const totalsResult = await db.execute(sql`
     SELECT

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { toolProfiles, telemetrySpans, telemetryMetrics } from '@stereos/shared/schema';
+import { toolProfiles, telemetrySpans, telemetryMetrics, users } from '@stereos/shared/schema';
 import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import { getCurrentUser } from '../lib/middleware.js';
@@ -167,6 +167,7 @@ router.post('/metrics', authMiddleware, async (c) => {
 
   const customerId = apiToken.customer.id;
   const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
+  const teamId = apiToken.team_id ?? null;
 
   let body: any;
   try {
