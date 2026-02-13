@@ -3,7 +3,7 @@ import { relations } from 'drizzle-orm';
 
 // ── Better Auth core tables ──────────────────────────────────────────────
 
-export const userRoleEnum = pgEnum('user_role', ['admin', 'user']);
+export const userRoleEnum = pgEnum('user_role', ['admin', 'manager', 'user']);
 
 export const userTitleEnum = pgEnum('user_title', [
   'engineer',
@@ -93,10 +93,34 @@ export const customers = pgTable('Customer', {
   updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
 });
 
+// ── Teams ───────────────────────────────────────────────────────────────
+
+export const teams = pgTable('Team', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  profile_pic: text('profile_pic'),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
+}, (t) => ({
+  customerIdx: index('Team_customer_id_idx').on(t.customer_id),
+  customerNameIdx: uniqueIndex('Team_customer_name_idx').on(t.customer_id, t.name),
+}));
+
+export const teamMembers = pgTable('TeamMember', {
+  team_id: text('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.team_id, t.user_id] }),
+  userIdx: index('TeamMember_user_id_idx').on(t.user_id),
+}));
+
 export const apiTokens = pgTable('ApiToken', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  team_id: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
   token: text('token').unique().notNull(),
   name: text('name').notNull(),
   scopes: text('scopes').array().notNull(),
@@ -124,53 +148,7 @@ export const usageEvents = pgTable('UsageEvent', {
   idempotencyIdx: uniqueIndex('UsageEvent_idempotency_idx').on(t.customer_id, t.idempotency_key),
 }));
 
-// ── Provenance tables ────────────────────────────────────────────────────
-
-export const provenanceEvents = pgTable('ProvenanceEvent', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
-  user_id: text('user_id').references(() => users.id, { onDelete: 'cascade' }), // Individual user who triggered the event
-  title: text('title'), // User's title at time of event
-  actor_type: text('actor_type').notNull(), // 'agent'
-  actor_id: text('actor_id').notNull(), // e.g., 'cursor-v1', 'kilo-ci-bot'
-  tool: text('tool').notNull(),
-  model: text('model'),
-  intent: text('intent').notNull(),
-  files_written: text('files_written').array(),
-  timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
-  event_hash: text('event_hash'), // Optional signing hash
-}, (t) => ({
-  customerIdx: index('ProvenanceEvent_customer_id_idx').on(t.customer_id),
-  userIdx: index('ProvenanceEvent_user_id_idx').on(t.user_id),
-  titleIdx: index('ProvenanceEvent_title_idx').on(t.title),
-  timeIdx: index('ProvenanceEvent_timestamp_idx').on(t.timestamp),
-  actorIdx: index('ProvenanceEvent_actor_idx').on(t.actor_id),
-}));
-
-export const artifactLinks = pgTable('ArtifactLink', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  event_id: text('event_id').notNull().references(() => provenanceEvents.id, { onDelete: 'cascade' }),
-  repo: text('repo').notNull(),
-  branch: text('branch'),
-  commit: text('commit'),
-  diff_hash: text('diff_hash'),
-  diff_content: text('diff_content'),
-}, (t) => ({
-  eventIdx: index('ArtifactLink_event_id_idx').on(t.event_id),
-  commitIdx: index('ArtifactLink_commit_idx').on(t.commit),
-  repoIdx: index('ArtifactLink_repo_idx').on(t.repo),
-}));
-
-export const outcomes = pgTable('Outcome', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  event_id: text('event_id').notNull().references(() => provenanceEvents.id, { onDelete: 'cascade' }),
-  status: text('status').notNull(), // 'accepted' | 'rejected' | 'superseded'
-  linked_commit: text('linked_commit'),
-  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  eventIdx: index('Outcome_event_id_idx').on(t.event_id),
-  statusIdx: index('Outcome_status_idx').on(t.status),
-}));
+// ── Invites ─────────────────────────────────────────────────────────────
 
 export const invites = pgTable('Invite', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -211,6 +189,7 @@ export const telemetrySpans = pgTable('TelemetrySpan', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  team_id: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
   tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
   trace_id: text('trace_id').notNull(),
   span_id: text('span_id').notNull(),
@@ -236,31 +215,11 @@ export const telemetrySpans = pgTable('TelemetrySpan', {
   userIdx: index('TelemetrySpan_user_id_idx').on(t.user_id),
 }));
 
-export const telemetryLogs = pgTable('TelemetryLog', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
-  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
-  tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
-  vendor: text('vendor').notNull(),
-  trace_id: text('trace_id'),
-  span_id: text('span_id'),
-  severity: text('severity'),
-  body: text('body'),
-  resource_attributes: jsonb('resource_attributes'),
-  log_attributes: jsonb('log_attributes'),
-  timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
-  ingested_at: timestamp('ingested_at', { withTimezone: true }).defaultNow(),
-}, (t) => ({
-  customerIdx: index('TelemetryLog_customer_id_idx').on(t.customer_id),
-  userIdx: index('TelemetryLog_user_id_idx').on(t.user_id),
-  vendorIdx: index('TelemetryLog_vendor_idx').on(t.vendor),
-  timestampIdx: index('TelemetryLog_timestamp_idx').on(t.timestamp),
-}));
-
 export const telemetryMetrics = pgTable('TelemetryMetric', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  team_id: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
   tool_profile_id: text('tool_profile_id').references(() => toolProfiles.id, { onDelete: 'set null' }),
   vendor: text('vendor').notNull(),
   service_name: text('service_name'),
@@ -296,9 +255,19 @@ export const telemetryMetrics = pgTable('TelemetryMetric', {
 export const usersRelations = relations(users, ({ many, one }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
+  teamMemberships: many(teamMembers),
   ownedCustomers: many(customers),
   customer: one(customers, { fields: [users.customer_id], references: [customers.id] }),
-  provenanceEvents: many(provenanceEvents),
+}));
+
+export const teamsRelations = relations(teams, ({ many, one }) => ({
+  members: many(teamMembers),
+  customer: one(customers, { fields: [teams.customer_id], references: [customers.id] }),
+}));
+
+export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
+  team: one(teams, { fields: [teamMembers.team_id], references: [teams.id] }),
+  user: one(users, { fields: [teamMembers.user_id], references: [users.id] }),
 }));
 
 export const apiTokensRelations = relations(apiTokens, ({ one }) => ({
@@ -310,7 +279,6 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
   user: one(users, { fields: [customers.user_id], references: [users.id] }),
   apiTokens: many(apiTokens),
   usageEvents: many(usageEvents),
-  provenanceEvents: many(provenanceEvents),
   invites: many(invites),
   toolProfiles: many(toolProfiles),
   telemetrySpans: many(telemetrySpans),
@@ -321,36 +289,15 @@ export const invitesRelations = relations(invites, ({ one }) => ({
   invitedBy: one(users, { fields: [invites.invited_by_user_id], references: [users.id] }),
 }));
 
-export const provenanceEventsRelations = relations(provenanceEvents, ({ one, many }) => ({
-  customer: one(customers, { fields: [provenanceEvents.customer_id], references: [customers.id] }),
-  user: one(users, { fields: [provenanceEvents.user_id], references: [users.id] }),
-  artifacts: many(artifactLinks),
-  outcomes: many(outcomes),
-}));
-
-export const artifactLinksRelations = relations(artifactLinks, ({ one }) => ({
-  event: one(provenanceEvents, { fields: [artifactLinks.event_id], references: [provenanceEvents.id] }),
-}));
-
-export const outcomesRelations = relations(outcomes, ({ one }) => ({
-  event: one(provenanceEvents, { fields: [outcomes.event_id], references: [provenanceEvents.id] }),
-}));
-
 export const toolProfilesRelations = relations(toolProfiles, ({ one, many }) => ({
   customer: one(customers, { fields: [toolProfiles.customer_id], references: [customers.id] }),
   telemetrySpans: many(telemetrySpans),
-  telemetryLogs: many(telemetryLogs),
   telemetryMetrics: many(telemetryMetrics),
 }));
 
 export const telemetrySpansRelations = relations(telemetrySpans, ({ one }) => ({
   customer: one(customers, { fields: [telemetrySpans.customer_id], references: [customers.id] }),
   toolProfile: one(toolProfiles, { fields: [telemetrySpans.tool_profile_id], references: [toolProfiles.id] }),
-}));
-
-export const telemetryLogsRelations = relations(telemetryLogs, ({ one }) => ({
-  customer: one(customers, { fields: [telemetryLogs.customer_id], references: [customers.id] }),
-  toolProfile: one(toolProfiles, { fields: [telemetryLogs.tool_profile_id], references: [toolProfiles.id] }),
 }));
 
 export const telemetryMetricsRelations = relations(telemetryMetrics, ({ one }) => ({
@@ -362,5 +309,4 @@ export type User = typeof users.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type ToolProfile = typeof toolProfiles.$inferSelect;
 export type TelemetrySpan = typeof telemetrySpans.$inferSelect;
-export type TelemetryLog = typeof telemetryLogs.$inferSelect;
 export type TelemetryMetric = typeof telemetryMetrics.$inferSelect;

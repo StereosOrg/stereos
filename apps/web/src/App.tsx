@@ -2,13 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Dashboard } from './pages/Dashboard';
-import { ProvenanceView } from './pages/ProvenanceView';
-import { EventsSearch } from './pages/EventsSearch';
-import { EventDetail } from './pages/EventDetail';
-import { EventFileDiff } from './pages/EventFileDiff';
 import { Settings } from './pages/Settings';
 import { UsersList } from './pages/UsersList';
-import { UserProfile } from './pages/UserProfile';
 import { Onboarding } from './pages/Onboarding';
 import { PaymentSuccess } from './pages/PaymentSuccess';
 import { StartTrial } from './pages/StartTrial';
@@ -21,6 +16,10 @@ import { AuthCallback } from './pages/AuthCallback';
 import { VerifyMagic } from './pages/VerifyMagic';
 import { ToolProfiles } from './pages/ToolProfiles';
 import { ToolProfileDetail } from './pages/ToolProfileDetail';
+import { IndividualProfile } from './pages/IndividualProfile';
+import { DiffDetail } from './pages/DiffDetail';
+import { TeamProfile } from './pages/TeamProfile';
+import { Teams } from './pages/Teams';
 
 function ProtectedLayout() {
   return (
@@ -52,15 +51,15 @@ function App() {
       {/* Protected routes with Layout - require auth + onboarding + payment */}
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
-        <Route path="provenance" element={<ProvenanceView />} />
-        <Route path="tools" element={<ToolProfiles />} />
-        <Route path="tools/:profileId" element={<ToolProfileDetail />} />
-        <Route path="events" element={<EventsSearch />} />
-        <Route path="events/:eventId" element={<EventDetail />} />
-        <Route path="events/:eventId/file" element={<EventFileDiff />} />
+        <Route path="ingest" element={<ToolProfiles />} />
+        <Route path="ingest/:profileId" element={<ToolProfileDetail />} />
+        <Route path="individual-profile" element={<IndividualProfile />} />
+        <Route path="diffs/:spanId" element={<DiffDetail />} />
+        <Route path="teams" element={<Teams />} />
+        <Route path="teams/:teamId" element={<TeamProfile />} />
         <Route path="settings" element={<Settings />} />
         <Route path="users" element={<UsersList />} />
-        <Route path="users/:userId" element={<UserProfile />} />
+        <Route path="users/:userId" element={<IndividualProfile />} />
       </Route>
 
       {/* Catch all - redirect to home */}

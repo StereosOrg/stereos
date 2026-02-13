@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import { toolProfiles, telemetrySpans, telemetryLogs, telemetryMetrics } from '@stereos/shared/schema';
+import { toolProfiles, telemetrySpans, telemetryMetrics } from '@stereos/shared/schema';
 import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
+import { getCurrentUser } from '../lib/middleware.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
 import { canonicalizeVendor, flattenOtelAttributes } from '../lib/vendor-map.js';
 import { trackTelemetryEventsUsage, trackToolProfilesUsage } from '../lib/stripe.js';
@@ -15,7 +16,6 @@ const router = new Hono<{ Variables: AppVariables }>();
 // Use router.on() so HEAD/OPTIONS work in Workers (router.head may be missing in bundle).
 
 router.on(['HEAD', 'OPTIONS'], '/traces', (c) => c.body(null, 200));
-router.on(['HEAD', 'OPTIONS'], '/logs', (c) => c.body(null, 200));
 router.on(['HEAD', 'OPTIONS'], '/metrics', (c) => c.body(null, 200));
 
 // ── OTLP Ingestion: Traces ──────────────────────────────────────────────
@@ -26,6 +26,7 @@ router.post('/traces', authMiddleware, async (c) => {
 
   const customerId = apiToken.customer.id;
   const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
+  const teamId = apiToken.team_id ?? null;
 
   let body: any;
   try {
@@ -38,6 +39,7 @@ router.post('/traces', authMiddleware, async (c) => {
   if (!Array.isArray(resourceSpans)) {
     return c.json({ error: 'Missing resourceSpans array' }, 400);
   }
+
 
   const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
   const existingVendors = new Set(
@@ -66,6 +68,8 @@ router.post('/traces', authMiddleware, async (c) => {
       for (const span of spans) {
         spanCount++;
         const spanAttrs = flattenOtelAttributes(span.attributes);
+        if (userId) spanAttrs['user.id'] = userId;
+        if (teamId) spanAttrs['team.id'] = teamId;
         const startNano = span.startTimeUnixNano ? BigInt(span.startTimeUnixNano) : BigInt(0);
         const endNano = span.endTimeUnixNano ? BigInt(span.endTimeUnixNano) : BigInt(0);
         const startTime = new Date(Number(startNano / BigInt(1_000_000)));
@@ -84,6 +88,7 @@ router.post('/traces', authMiddleware, async (c) => {
         spanRows.push({
           customer_id: customerId,
           user_id: userId,
+          team_id: teamId,
           trace_id: traceId,
           span_id: span.spanId || '',
           parent_span_id: span.parentSpanId || null,
@@ -152,184 +157,6 @@ router.post('/traces', authMiddleware, async (c) => {
   }
 
   return c.json({ partialSuccess: { rejectedSpans: 0, acceptedSpans: totalInserted } });
-});
-
-// ── OTLP Ingestion: Logs ────────────────────────────────────────────────
-
-router.post('/logs', authMiddleware, async (c) => {
-  const apiToken = c.get('apiToken') as ApiTokenPayload;
-  const db = c.get('db');
-
-  const customerId = apiToken.customer.id;
-  const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
-
-  const contentType = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
-  if (contentType === 'application/x-protobuf' || contentType === 'application/protobuf') {
-    return c.json(
-      {
-        error: 'OTLP binary protobuf is not supported',
-        hint: 'This endpoint accepts JSON only. Configure your OTLP exporter to use JSON encoding (e.g. protocol "http" with JSON, or Content-Type: application/json).',
-      },
-      415
-    );
-  }
-
-  let body: any;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json(
-      {
-        error: 'Invalid JSON body',
-        hint: 'Body must be JSON. If your exporter sends binary protobuf, configure it to use JSON encoding.',
-      },
-      400
-    );
-  }
-
-  const resourceLogs = body?.resourceLogs ?? body?.resource_logs;
-  if (!Array.isArray(resourceLogs)) {
-    return c.json({ error: 'Missing resourceLogs array', hint: 'OTLP JSON expects root key "resourceLogs".' }, 400);
-  }
-
-  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
-  const existingVendorsLogs = new Set(
-    (await db.select({ vendor: toolProfiles.vendor }).from(toolProfiles).where(eq(toolProfiles.customer_id, customerId))).map((r) => r.vendor)
-  );
-
-  let totalInserted = 0;
-
-  for (const rl of resourceLogs) {
-    const resourceAttrs = flattenOtelAttributes(rl.resource?.attributes);
-    const vendor = canonicalizeVendor(resourceAttrs);
-    const serviceName = resourceAttrs['service.name'] || null;
-
-    const logRows: Array<typeof telemetryLogs.$inferInsert> = [];
-    const spanRows: Array<typeof telemetrySpans.$inferInsert> = [];
-    const traceIds = new Set<string>();
-    let errorCount = 0;
-    let logErrorCount = 0;
-
-    const scopeLogs = rl.scopeLogs || [];
-    for (const sl of scopeLogs) {
-      const logRecords = sl.logRecords || [];
-      for (const lr of logRecords) {
-        const SEVERITY_MAP: Record<number, string> = { 1: 'TRACE', 5: 'DEBUG', 9: 'INFO', 13: 'WARN', 17: 'ERROR', 21: 'FATAL' };
-        const severity = SEVERITY_MAP[lr.severityNumber] || lr.severityText || 'INFO';
-        const tsNano = lr.timeUnixNano ? BigInt(lr.timeUnixNano) : BigInt(Date.now() * 1_000_000);
-        const timestamp = new Date(Number(tsNano / BigInt(1_000_000)));
-        const logAttrs = flattenOtelAttributes(lr.attributes);
-        // Support both camelCase (OTLP JSON) and snake_case, and fallback to attributes
-        const traceIdRaw = lr.traceId ?? (lr as { trace_id?: string }).trace_id ?? logAttrs['trace_id'] ?? logAttrs['traceId'] ?? null;
-        const spanIdRaw = lr.spanId ?? (lr as { span_id?: string }).span_id ?? logAttrs['span_id'] ?? logAttrs['spanId'] ?? null;
-
-        logRows.push({
-          customer_id: customerId,
-          user_id: userId,
-          vendor: vendor.slug,
-          trace_id: traceIdRaw,
-          span_id: spanIdRaw,
-          severity,
-          body: lr.body?.stringValue || (typeof lr.body === 'string' ? lr.body : JSON.stringify(lr.body)),
-          resource_attributes: resourceAttrs,
-          log_attributes: logAttrs,
-          timestamp,
-        });
-
-        // Synthesize a TelemetrySpan from log records that carry span context
-        if (severity === 'ERROR' || severity === 'FATAL') {
-          logErrorCount++;
-        }
-
-        if (traceIdRaw && spanIdRaw) {
-          traceIds.add(traceIdRaw);
-          const isError = severity === 'ERROR' || severity === 'FATAL';
-          if (isError) errorCount++;
-
-          // Derive a span name from log attributes or body
-          const spanName = logAttrs['name']
-            || logAttrs['operation']
-            || logAttrs['http.method']
-            || lr.body?.stringValue
-            || (typeof lr.body === 'string' ? lr.body : '')
-            || 'log';
-
-          spanRows.push({
-            customer_id: customerId,
-            user_id: userId,
-            trace_id: traceIdRaw,
-            span_id: spanIdRaw,
-            parent_span_id: null,
-            span_name: spanName.length > 200 ? spanName.slice(0, 200) : spanName,
-            span_kind: 'INTERNAL',
-            start_time: timestamp,
-            end_time: null,
-            duration_ms: null,
-            status_code: isError ? 'ERROR' : 'OK',
-            status_message: isError ? (lr.body?.stringValue || null) : null,
-            vendor: vendor.slug,
-            service_name: serviceName,
-            resource_attributes: resourceAttrs,
-            span_attributes: logAttrs,
-            signal_type: 'log',
-          });
-        }
-      }
-    }
-
-    if (logRows.length === 0) continue;
-
-    const now = new Date();
-    const profileSpanCount = spanRows.length;
-    const profileErrorCount = profileSpanCount > 0 ? errorCount : logErrorCount;
-    const [profile] = await db
-      .insert(toolProfiles)
-      .values({
-        customer_id: customerId,
-        vendor: vendor.slug,
-        display_name: vendor.displayName,
-        vendor_category: vendor.category,
-        total_spans: profileSpanCount,
-        total_traces: traceIds.size,
-        total_errors: profileErrorCount,
-        first_seen_at: now,
-        last_seen_at: now,
-      })
-      .onConflictDoUpdate({
-        target: [toolProfiles.customer_id, toolProfiles.vendor],
-        set: {
-          display_name: vendor.displayName,
-          vendor_category: vendor.category,
-          total_spans: sql`"ToolProfile"."total_spans" + ${profileSpanCount}`,
-          total_traces: sql`"ToolProfile"."total_traces" + ${traceIds.size}`,
-          total_errors: sql`"ToolProfile"."total_errors" + ${profileErrorCount}`,
-          last_seen_at: now,
-          updated_at: now,
-        },
-      })
-      .returning({ id: toolProfiles.id });
-
-    for (const row of logRows) {
-      row.tool_profile_id = profile.id;
-    }
-
-    await db.insert(telemetryLogs).values(logRows);
-    totalInserted += logRows.length;
-
-    if (spanRows.length > 0) {
-      for (const row of spanRows) {
-        row.tool_profile_id = profile.id;
-      }
-      await db.insert(telemetrySpans).values(spanRows);
-    }
-
-    if (!existingVendorsLogs.has(vendor.slug)) {
-      existingVendorsLogs.add(vendor.slug);
-      await trackToolProfilesUsage(db, customerId, 1, { tool_profile_id: profile.id }, stripeKey);
-    }
-  }
-
-  return c.json({ partialSuccess: { rejectedLogRecords: 0, acceptedLogRecords: totalInserted } });
 });
 
 // ── OTLP Ingestion: Metrics (OTLP JSON) ─────────────────────────────────
@@ -417,6 +244,7 @@ router.post('/metrics', authMiddleware, async (c) => {
           metricRows.push({
             customer_id: customerId,
             user_id: userId,
+            team_id: teamId,
             tool_profile_id: profile.id,
             vendor: vendor.slug,
             service_name: serviceName,
@@ -537,6 +365,32 @@ router.get('/tool-profiles/:profileId', sessionOrTokenAuth, async (c) => {
   return c.json({ profile, latency });
 });
 
+// Delete tool profile and all associated telemetry
+router.delete('/tool-profiles/:profileId', sessionOrTokenAuth, async (c) => {
+  const currentUser = await getCurrentUser(c as any);
+  if (!currentUser || (currentUser as { role?: string }).role !== 'admin') {
+    return c.json({ error: 'Forbidden - Admin access required' }, 403);
+  }
+  const apiToken = c.get('apiToken') as ApiTokenPayload;
+  const db = c.get('db');
+  const customerId = apiToken.customer.id;
+  const profileId = c.req.param('profileId');
+
+  const profile = await db.query.toolProfiles.findFirst({
+    where: and(eq(toolProfiles.id, profileId), eq(toolProfiles.customer_id, customerId)),
+    columns: { id: true },
+  });
+  if (!profile) {
+    return c.json({ error: 'Tool profile not found' }, 404);
+  }
+
+  await db.delete(telemetrySpans).where(eq(telemetrySpans.tool_profile_id, profileId));
+  await db.delete(telemetryMetrics).where(eq(telemetryMetrics.tool_profile_id, profileId));
+  await db.delete(toolProfiles).where(eq(toolProfiles.id, profileId));
+
+  return c.json({ success: true });
+});
+
 router.get('/tool-profiles/:profileId/spans', sessionOrTokenAuth, async (c) => {
   const apiToken = c.get('apiToken') as ApiTokenPayload;
   const db = c.get('db');
@@ -563,6 +417,114 @@ router.get('/tool-profiles/:profileId/spans', sessionOrTokenAuth, async (c) => {
   });
 
   return c.json({ spans, limit, offset });
+});
+
+// GET /v1/spans/:spanId - Get a single span (for diff drilldown)
+router.get('/spans/:spanId', sessionOrTokenAuth, async (c) => {
+  const apiToken = c.get('apiToken') as ApiTokenPayload;
+  const db = c.get('db');
+  const customerId = apiToken.customer.id;
+  const spanId = c.req.param('spanId');
+
+  const span = await db.query.telemetrySpans.findFirst({
+    where: and(eq(telemetrySpans.id, spanId), eq(telemetrySpans.customer_id, customerId)),
+    columns: {
+      id: true,
+      vendor: true,
+      span_name: true,
+      start_time: true,
+      span_attributes: true,
+    },
+  });
+
+  if (!span) return c.json({ error: 'Span not found' }, 404);
+  return c.json({ span });
+});
+
+// GET /v1/dashboard - Summary stats from spans (auth)
+router.get('/dashboard', sessionOrTokenAuth, async (c) => {
+  const apiToken = c.get('apiToken') as ApiTokenPayload;
+  const db = c.get('db');
+  const customerId = apiToken.customer.id;
+
+  const totalsResult = await db.execute(sql`
+    SELECT
+      COUNT(*)::int AS total_spans,
+      COUNT(DISTINCT trace_id)::int AS total_traces,
+      COUNT(DISTINCT vendor)::int AS active_sources
+    FROM "TelemetrySpan"
+    WHERE customer_id = ${customerId}
+  `);
+  const totalsRow = Array.isArray(totalsResult) ? totalsResult[0] : (totalsResult as { rows?: unknown[] })?.rows?.[0];
+
+  const recentSpans = await db.query.telemetrySpans.findMany({
+    where: eq(telemetrySpans.customer_id, customerId),
+    orderBy: desc(telemetrySpans.start_time),
+    limit: 20,
+    columns: {
+      id: true,
+      span_name: true,
+      vendor: true,
+      start_time: true,
+      span_attributes: true,
+      tool_profile_id: true,
+      user_id: true,
+    },
+  });
+
+  const recent = recentSpans.map((s) => ({
+    id: s.id,
+    intent: s.span_name,
+    vendor: s.vendor,
+    timestamp: s.start_time,
+    tool_profile_id: s.tool_profile_id,
+    model: (s.span_attributes as Record<string, string> | null)?.['gen_ai.request.model'] ?? (s.span_attributes as Record<string, string> | null)?.['gen_ai.response.model'] ?? null,
+  }));
+
+  const mostActiveResult = await db.execute(sql`
+    SELECT COALESCE(user_id, span_attributes->>'user.id') AS user_id, COUNT(*)::int AS span_count
+    FROM "TelemetrySpan"
+    WHERE customer_id = ${customerId}
+      AND (user_id IS NOT NULL OR span_attributes->>'user.id' IS NOT NULL)
+      AND start_time >= NOW() - INTERVAL '30 days'
+    GROUP BY COALESCE(user_id, span_attributes->>'user.id')
+    ORDER BY span_count DESC
+    LIMIT 1
+  `);
+  const mostRow = Array.isArray(mostActiveResult) ? mostActiveResult[0] : (mostActiveResult as { rows?: unknown[] })?.rows?.[0];
+  let mostActiveUser: { id: string; name: string | null; email: string | null; span_count: number } | null = null;
+  if (mostRow?.user_id) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, String(mostRow.user_id)),
+      columns: { id: true, name: true, email: true },
+    });
+    mostActiveUser = {
+      id: String(mostRow.user_id),
+      name: user?.name ?? null,
+      email: user?.email ?? null,
+      span_count: Number(mostRow.span_count ?? 0),
+    };
+  }
+  if (!mostActiveUser && apiToken.user_id) {
+    const fallbackUser = await db.query.users.findFirst({
+      where: eq(users.id, String(apiToken.user_id)),
+      columns: { id: true, name: true, email: true },
+    });
+    mostActiveUser = {
+      id: String(apiToken.user_id),
+      name: fallbackUser?.name ?? null,
+      email: fallbackUser?.email ?? null,
+      span_count: 0,
+    };
+  }
+
+  return c.json({
+    total_spans: Number((totalsRow as Record<string, unknown>)?.total_spans ?? 0),
+    total_traces: Number((totalsRow as Record<string, unknown>)?.total_traces ?? 0),
+    active_sources: Number((totalsRow as Record<string, unknown>)?.active_sources ?? 0),
+    recent_spans: recent,
+    most_active_user: mostActiveUser,
+  });
 });
 
 // ── Read: Custom Metrics ────────────────────────────────────────────────

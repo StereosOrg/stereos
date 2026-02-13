@@ -7,13 +7,14 @@ import { sendEmailViaResendFetch, VERIFICATION_EMAIL_HTML, MAGIC_LINK_EMAIL_HTML
 import type { AppVariables } from './types/app.js';
 import type { AuthType } from './lib/auth.js';
 import type { Database } from '@stereos/shared/db';
-import eventsRouter from './routes/events.js';
 import authRouter from './routes/auth.js';
+import chatCompletionsRouter from './routes/chat-completions.js';
 import billingRouter from './routes/billing.js';
 import usersRouter from './routes/users.js';
 import onboardingRouter from './routes/onboarding.js';
 import invitesRouter from './routes/invites.js';
 import telemetryRouter from './routes/telemetry.js';
+import teamsRouter from './routes/teams.js';
 
 // Cache db and auth per isolate to avoid expensive re-initialization on every request.
 // Env bindings are stable within a deployment, so we key by DATABASE_URL to detect changes.
@@ -65,7 +66,7 @@ function addCorsToResponse(c: { req: { header: (name: string) => string | undefi
   h.set('Access-Control-Allow-Origin', acao);
   h.set('Access-Control-Allow-Credentials', 'true');
   h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Provider-Key');
   h.set('Access-Control-Expose-Headers', 'set-auth-token');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }
@@ -87,7 +88,7 @@ app.use('*', async (c, next) => {
 app.use('*', cors({
   origin: (origin, c) => getAllowedOrigin(c),
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Provider-Key'],
   exposeHeaders: ['set-auth-token'],
   credentials: true,
 }));
@@ -163,13 +164,14 @@ app.get('/health', (c) =>
   })
 );
 
-app.route('/v1', eventsRouter);
 app.route('/v1', authRouter);
+app.route('/v1', chatCompletionsRouter);
 app.route('/v1', billingRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);
 app.route('/v1', telemetryRouter);
+app.route('/v1', teamsRouter);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/v1/') || c.req.path === '/health') {
@@ -205,7 +207,7 @@ function addCorsToResponseStandalone(req: Request, env: Env, res: Response): Res
   h.set('Access-Control-Allow-Origin', acao);
   h.set('Access-Control-Allow-Credentials', 'true');
   h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Provider-Key');
   h.set('Access-Control-Expose-Headers', 'set-auth-token');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }

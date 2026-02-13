@@ -1,0 +1,156 @@
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { API_BASE, getAuthHeaders } from '../lib/api';
+import { Link } from 'react-router-dom';
+import { Plus } from 'lucide-react';
+
+interface Team {
+  id: string;
+  name: string;
+  profile_pic: string | null;
+}
+
+interface User {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+}
+
+export function Teams() {
+  const queryClient = useQueryClient();
+  const { data: teamsData, isLoading } = useQuery<{ teams: Team[] }>({
+    queryKey: ['teams'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/teams`, { credentials: 'include', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Failed to fetch teams');
+      return res.json();
+    },
+  });
+
+  const { data: usersData } = useQuery<{ users: User[] }>({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/users`, { credentials: 'include', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Failed to fetch users');
+      return res.json();
+    },
+  });
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [name, setName] = useState('');
+  const [profilePic, setProfilePic] = useState('');
+  const [managerId, setManagerId] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const createTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/v1/teams`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        credentials: 'include',
+        body: JSON.stringify({ name, profile_pic: profilePic || null, manager_user_id: managerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create team');
+      setName('');
+      setProfilePic('');
+      setManagerId('');
+      setShowCreate(false);
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create team');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '48px' }}>
+        <div
+          style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid var(--border-color)',
+            borderTopColor: 'var(--bg-mint)',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+          }}
+        />
+      </div>
+    );
+  }
+
+  const teams = teamsData?.teams ?? [];
+  const managers = (usersData?.users ?? []).filter((u) => u.role === 'manager' || u.role === 'admin');
+
+  return (
+    <div>
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <h1 className="heading-1" style={{ margin: 0 }}>Teams</h1>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Plus size={18} /> Create team
+          </button>
+        </div>
+        <p className="text-large" style={{ color: '#555', margin: '8px 0 0' }}>{teams.length} teams</p>
+      </div>
+
+      {showCreate && (
+        <div className="card" style={{ marginBottom: '24px', maxWidth: '520px' }}>
+          <h2 className="heading-3" style={{ marginBottom: '12px' }}>New team</h2>
+          <form onSubmit={createTeam}>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>Name</label>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>Profile pic (optional)</label>
+              <input className="input" value={profilePic} onChange={(e) => setProfilePic(e.target.value)} placeholder="https://..." />
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>Manager</label>
+              <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)} required>
+                <option value="">Select manager</option>
+                {managers.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name || m.email}</option>
+                ))}
+              </select>
+            </div>
+            {error && <p style={{ color: '#dc2626', fontSize: '14px', fontWeight: 600 }}>{error}</p>}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create'}</button>
+              <button className="btn" type="button" onClick={() => setShowCreate(false)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: 'var(--bg-mint)', borderBottom: 'var(--border-width) solid var(--border-color)' }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>Team</th>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map((t) => (
+              <tr key={t.id} style={{ borderBottom: 'var(--border-width) solid var(--border-color)' }}>
+                <td style={{ padding: '12px 16px', fontWeight: 600 }}>{t.name}</td>
+                <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                  <Link to={`/teams/${t.id}`} className="btn btn-primary" style={{ textDecoration: 'none' }}>View</Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

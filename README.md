@@ -1,32 +1,29 @@
-# Stereos - LLM Provenance Platform
+# Stereos - Collaboration-First LLM Telemetry
 
-An engineering-first platform that records **how code came to exist**, not just usage metrics. The system captures structured cognition events from agents and partner tools (Cursor, Kilo Code, etc.) and links them to Git artifacts.
+Stereos is a collaboration‑first platform that captures **LLM spans** (OTLP/GenAI telemetry) and turns them into team‑level visibility, user profiles, and diff drilldowns. It focuses on what happened, who did it, and how it changed the code.
 
 ## Architecture
 
 ```
-[ Agent / Partner Tool ]
+[ Agent / App / Proxy ]
           |
           v
-   Hono Ingest API  ──► Event Store (Append‑only)
-          |
-          v
-    Provenance Graph Builder
+   Hono Ingest API  ──► Spans Store (Postgres)
           |
           v
    Query API  ──► React Client (RCC)
           |
           v
-  Auth (Better Auth) + Billing (Stripe Pay-as-you-go)
+  Auth (Better Auth) + Billing (Stripe Pay‑as‑you‑go)
 ```
 
 ## Core Principles
 
-- **Write-optimized, read-derived**: Agents are the only provenance source
-- **Immutable audit trail**: All events are append-only
-- **Git-native**: Every event links to commits, branches, and repos
-- **Engineering-first**: Answers "why is this here?" from agent data
-- **RBAC**: Simple admin/user role system with user activity tracking
+- **Spans-first**: All data is derived from OTLP spans (trace + metrics)
+- **Collaboration-ready**: Users + Teams with admin/manager roles
+- **Auditability**: Diff drilldowns via `tool.output.diff`
+- **Simple ingestion**: OTLP JSON ingest + chat‑proxy spans
+- **RBAC**: admin / manager / user
 
 ## Quick Start
 
@@ -63,93 +60,97 @@ The API will be available at `http://localhost:3000` and the web UI at `http://l
 
 ### Authentication
 
-Event and provenance endpoints use **API tokens** (Bearer), not session cookies. Create a token after signing in:
+All endpoints use **Bearer tokens** (no cookies). Tokens are **team‑scoped** for admins/managers and always force a `team_id` on spans.
 
-**1. Get your customer ID** (e.g. from the app Settings, or call when logged in with a session cookie):
+**1. Get your customer ID** (from the app Settings or via API):
 
 ```bash
-curl -s -H "Cookie: YOUR_SESSION_COOKIE" http://localhost:3000/v1/customers/me | jq -r '.customer.id'
+curl -H "Authorization: Bearer YOUR_API_TOKEN" \
+  http://localhost:3000/v1/customers/me
 ```
 
-**2. Create an API token** (use the `customer_id` from step 1):
+**2. Create an API token** (admin/manager only; must include `team_id`):
 
 ```bash
 curl -X POST http://localhost:3000/v1/tokens \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"customer_id":"YOUR_CUSTOMER_ID","name":"CLI"}'
+  -d '{"customer_id":"YOUR_CUSTOMER_ID","team_id":"YOUR_TEAM_ID","name":"CLI"}'
 ```
 
 Copy the `token` value from the response (it starts with `sk_`). Use it as `Authorization: Bearer sk_...`.
 
-**Important:** For curl line continuation, there must be **no space** after the backslash. Or use a one-liner.
+**Important:** For curl line continuation, there must be **no space** after the backslash. Or use a one‑liner.
 
-### Ingesting Events
+### Ingesting Spans (OTLP JSON)
 
-One-liner (copy-paste safe; replace `YOUR_API_TOKEN`):
-
-```bash
-curl -X POST http://localhost:3000/v1/events -H "Authorization: Bearer YOUR_API_TOKEN" -H "Content-Type: application/json" -d '{"event_type":"agent_action","actor_type":"agent","actor_id":"cursor-v1","tool":"refactor","intent":"refactor auth module","repo":"my-repo","commit":"abc123"}'
-```
-
-`timestamp` is optional (defaults to now). Example with timestamp and optional fields:
+Send OTLP JSON to `/v1/traces`.
 
 ```bash
-curl -X POST http://localhost:3000/v1/events \
+curl -X POST http://localhost:3000/v1/traces \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"event_type":"agent_action","actor_type":"agent","actor_id":"cursor-v1","tool":"refactor","intent":"refactor authentication module","model":"gpt-4","files_written":["src/auth.ts"],"timestamp":"2026-02-07T12:00:00Z","repo":"my-project","branch":"main","commit":"abc123"}'
+  -d '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"my-app"}}]},"scopeSpans":[{"spans":[{"traceId":"abc","spanId":"def","name":"gen_ai.request","kind":3,"startTimeUnixNano":"1710000000000000000","endTimeUnixNano":"1710000000500000000","attributes":[{"key":"gen_ai.request.model","value":{"stringValue":"gpt-5"}}]}]}]}]}'
 ```
 
-### Recording Outcomes
+Stereos will extract:
+- `user_id` from the API token
+- `team_id` from the team‑scoped token
+- `tool.output.diff` (when present) for diff drilldowns
+
+### Chat Completions (Proxy)
+
+The chat proxy writes GenAI spans automatically. Example:
 
 ```bash
-curl -X POST http://localhost:3000/v1/events \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event_type": "outcome",
-    "original_event_id": "event-uuid-here",
-    "status": "accepted",
-    "linked_commit": "def456"
-  }'
-```
-
-### Querying Provenance
-
-```bash
-# By commit
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  http://localhost:3000/v1/provenance/by-commit/abc123
-
-# By file
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  "http://localhost:3000/v1/provenance/by-file?path=src/auth.ts&repo=my-project"
-
-# Search events
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  "http://localhost:3000/v1/events/search?actor_id=cursor-v1&limit=10"
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H 'Authorization: Bearer YOUR_API_TOKEN' \
+  -H 'X-Provider: openrouter' \
+  -H 'X-Provider-Key: YOUR_PROVIDER_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"openai/gpt-5","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 ### User Management (Admin Only)
 
 ```bash
 # List all users (admin only)
-curl -H "Cookie: session=YOUR_SESSION_COOKIE" \
+curl -H "Authorization: Bearer YOUR_API_TOKEN" \
   http://localhost:3000/v1/users
 
-# Get detailed user profile with usage history (admin only)
-curl -H "Cookie: session=YOUR_SESSION_COOKIE" \
+# Get detailed user profile (admin only)
+curl -H "Authorization: Bearer YOUR_API_TOKEN" \
   http://localhost:3000/v1/users/USER_ID/profile
 
 # Update user role (admin only)
 curl -X PATCH http://localhost:3000/v1/users/USER_ID/role \
-  -H "Cookie: session=YOUR_SESSION_COOKIE" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"role": "admin"}'
+  -d '{"role":"manager"}'
 
-# Get current user profile
-curl -H "Cookie: session=YOUR_SESSION_COOKIE" \
-  http://localhost:3000/v1/me
+# Assign team (admin only)
+curl -X PATCH http://localhost:3000/v1/users/USER_ID/team \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"team_id":"TEAM_ID"}'
+```
+
+### Team Management (Admin Only)
+
+```bash
+# List teams
+curl -H "Authorization: Bearer YOUR_API_TOKEN" \
+  http://localhost:3000/v1/teams
+
+# Create team (must specify manager/admin user)
+curl -X POST http://localhost:3000/v1/teams \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Alpha","manager_user_id":"USER_ID"}'
+
+# Team profile metrics
+curl -H "Authorization: Bearer YOUR_API_TOKEN" \
+  http://localhost:3000/v1/teams/TEAM_ID/profile
 ```
 
 ## Project Structure
@@ -182,101 +183,20 @@ stereos/
 └── README.md
 ```
 
-## Database Schema
+## Database Schema (High Level)
 
-### Core Tables
+- **users** - Better Auth users with `role: admin | manager | user`
+- **teams** - Team records with `profile_pic`
+- **team_members** - Membership (requires at least one manager/admin per team)
+- **apiTokens** - Team‑scoped API tokens
+- **TelemetrySpan** - OTLP spans
+- **TelemetryMetric** - OTLP metrics
+- **ToolProfile** - Vendor/service rollups
 
-- **users** - Better Auth user accounts with role column (admin/user)
-- **partners** - Partner/tool integrations
-- **customers** - Customer accounts with Stripe linkage
-- **apiTokens** - API authentication tokens
-- **usageEvents** - Billing/usage tracking
-- **provenanceEvents** - Core provenance events (linked to users via user_id)
-- **artifactLinks** - Git commit/branch/file links
-- **outcomes** - Event acceptance/rejection status
+## UI Highlights
 
-### Views
+- **Dashboard**: spans‑based totals + most active user (30d)
+- **Users**: role/team assignment + individual profiles
+- **Teams**: admin‑only creation + team profiles
+- **Diff Drilldowns**: view `tool.output.diff` per span
 
-- **user_activity_summary** - Aggregated user activity statistics
-
-### Materialized Views
-
-- **partner_sourced_revenue** - Monthly revenue by partner (20% revenue share)
-
-## Billing
-
-STEREOS uses Stripe's pay-as-you-go billing:
-
-- **Agent actions**: $0.01 per event
-- **Outcomes**: $0.005 per event
-- **Storage**: $0.10 per GB
-
-Partners receive a 20% revenue share from their referred customers.
-
-## Development
-
-```bash
-# Run linting
-npm run lint
-
-# Type checking
-npm run typecheck
-
-# Database studio
-npm run db:studio
-
-# Generate migrations
-npm run db:generate
-```
-
-## Security
-
-- No raw prompt text stored by default
-- Immutable audit trail via append-only events
-- TLS + token auth required
-- API tokens with scoped permissions
-- Optional event signing for high-trust environments
-
-## Role-Based Access Control (RBAC)
-
-STEREOS implements a simple two-role system:
-
-### Roles
-
-- **Admin**: Full access to all features, including user management and viewing other users' profiles
-- **User**: Standard access to their own provenance data and events
-
-### User Management
-
-The first user to sign up is automatically assigned the `admin` role. All subsequent users are assigned the `user` role by default.
-
-Admins can:
-- View a list of all users
-- View detailed profiles of any user with full usage history
-- Change user roles (admin/user)
-- View aggregated user activity statistics
-
-### User Profiles
-
-Each user profile displays:
-- Basic user information (name, email, role, membership date)
-- Total provenance events generated
-- Active days and activity patterns
-- Monthly usage breakdown with cost tracking
-- Recent events with status
-- Most frequently modified files
-- Partner and billing status
-
-Access user profiles via the `/users` page (admin only) or programmatically via the API.
-
-## License
-
-[Your License Here]
-
-## Contributing
-
-[Contributing Guidelines]
-
-## Support
-
-For support, email [support email] or open an issue on GitHub.

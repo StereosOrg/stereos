@@ -11,6 +11,14 @@ interface User {
   role: string;
   createdAt: string;
   image: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
+}
+
+interface Team {
+  id: string;
+  name: string;
+  profile_pic: string | null;
 }
 
 export function UsersList() {
@@ -36,6 +44,19 @@ export function UsersList() {
       }
       return response.json();
     },
+  });
+
+  const { data: teams } = useQuery<{ teams: Team[] }>({
+    queryKey: ['teams'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/v1/teams`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error('Failed to fetch teams');
+      return response.json();
+    },
+    enabled: !error,
   });
 
   if (isLoading) {
@@ -102,6 +123,26 @@ export function UsersList() {
     } finally {
       setInviteLoading(false);
     }
+  };
+
+  const updateUserRole = async (userId: string, role: string) => {
+    await fetch(`${API_BASE}/v1/users/${userId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      credentials: 'include',
+      body: JSON.stringify({ role }),
+    });
+    queryClient.invalidateQueries({ queryKey: ['users'] });
+  };
+
+  const updateUserTeam = async (userId: string, teamId: string | null) => {
+    await fetch(`${API_BASE}/v1/users/${userId}/team`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      credentials: 'include',
+      body: JSON.stringify({ team_id: teamId }),
+    });
+    queryClient.invalidateQueries({ queryKey: ['users'] });
   };
 
   return (
@@ -219,6 +260,19 @@ export function UsersList() {
                   letterSpacing: '0.5px',
                 }}
               >
+                Team
+              </th>
+              <th
+                style={{
+                  padding: '16px 24px',
+                  textAlign: 'left',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'var(--dark)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
                 Joined
               </th>
               <th
@@ -291,18 +345,29 @@ export function UsersList() {
                   </div>
                 </td>
                 <td style={{ padding: '16px 24px' }}>
-                  <span
-                    className="badge"
-                    style={{
-                      background:
-                        user.role === 'admin'
-                          ? 'var(--dark)'
-                          : 'var(--bg-lavender)',
-                      color: user.role === 'admin' ? 'white' : 'var(--dark)',
-                    }}
+                  <select
+                    className="input"
+                    value={user.role}
+                    onChange={(e) => updateUserRole(user.id, e.target.value)}
+                    style={{ maxWidth: '160px' }}
                   >
-                    {user.role}
-                  </span>
+                    <option value="admin">admin</option>
+                    <option value="manager">manager</option>
+                    <option value="user">user</option>
+                  </select>
+                </td>
+                <td style={{ padding: '16px 24px' }}>
+                  <select
+                    className="input"
+                    value={user.team_id ?? ''}
+                    onChange={(e) => updateUserTeam(user.id, e.target.value || null)}
+                    style={{ maxWidth: '200px' }}
+                  >
+                    <option value="">Unassigned</option>
+                    {(teams?.teams ?? []).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
                 </td>
                 <td style={{ padding: '16px 24px', color: '#555' }}>
                   {new Date(user.createdAt).toLocaleDateString('en-US', {

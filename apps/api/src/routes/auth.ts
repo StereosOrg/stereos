@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
-import { customers, apiTokens, verifications, users, sessions, accounts } from '@stereos/shared/schema';
+import { customers, apiTokens, verifications, users, sessions, accounts, teamMembers } from '@stereos/shared/schema';
 import { newSessionToken, newUuid, newCustomerId, newApiToken } from '@stereos/shared/ids';
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gt, desc } from 'drizzle-orm';
 import { createStripeCustomer } from '../lib/stripe.js';
 import { sessionOrTokenAuth } from '../lib/api-token.js';
+import { getCustomerForUser } from '../lib/middleware.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
 import type { AppVariables } from '../types/app.js';
 
@@ -106,10 +107,31 @@ router.post('/customers/register', async (c) => {
 // Create API token (requires session or API token; user_id set from current user/customer owner)
 router.post('/tokens', sessionOrTokenAuth, async (c) => {
   const body = await c.req.json();
-  const { customer_id, name, scopes } = body;
+  const { customer_id, name, scopes, team_id } = body;
   const db = c.get('db');
   const apiTokenPayload = c.get('apiToken') as ApiTokenPayload;
   const userId = apiTokenPayload.user_id ?? apiTokenPayload.customer?.user_id ?? null;
+  const currentUser = await db.query.users.findFirst({
+    where: eq(users.id, userId ?? ''),
+    columns: { id: true, role: true },
+  });
+
+  if (!currentUser) return c.json({ error: 'Unauthorized' }, 401);
+  const customer = await getCustomerForUser(c as any, currentUser.id);
+  if (!customer || customer.id !== customer_id) {
+    return c.json({ error: 'Invalid customer for token' }, 403);
+  }
+  if (currentUser.role === 'manager' || currentUser.role === 'admin') {
+    if (!team_id) return c.json({ error: 'Team-scoped key required' }, 400);
+    const membership = await db.query.teamMembers.findFirst({
+      where: and(eq(teamMembers.team_id, team_id), eq(teamMembers.user_id, currentUser.id)),
+      columns: { team_id: true },
+    });
+    if (!membership) return c.json({ error: 'You can only create keys for your own team' }, 403);
+  }
+  if (currentUser.role === 'user') {
+    return c.json({ error: 'Insufficient permissions to create keys' }, 403);
+  }
 
   try {
     const token = newApiToken();
@@ -119,6 +141,7 @@ router.post('/tokens', sessionOrTokenAuth, async (c) => {
       .values({
         customer_id,
         user_id: userId,
+        team_id: team_id ?? null,
         token,
         name,
         scopes: scopes || ['events:write', 'events:read'],
@@ -139,6 +162,59 @@ router.post('/tokens', sessionOrTokenAuth, async (c) => {
     console.error('Token creation error:', error);
     return c.json({ error: 'Failed to create token' }, 500);
   }
+});
+
+// List API tokens for current customer (masked)
+router.get('/tokens', sessionOrTokenAuth, async (c) => {
+  const db = c.get('db');
+  const apiTokenPayload = c.get('apiToken') as ApiTokenPayload;
+  const customerId = apiTokenPayload.customer?.id;
+  if (!customerId) return c.json({ error: 'Customer not found' }, 403);
+
+  const tokens = await db.query.apiTokens.findMany({
+    where: eq(apiTokens.customer_id, customerId),
+    orderBy: desc(apiTokens.created_at),
+    columns: {
+      id: true,
+      name: true,
+      token: true,
+      scopes: true,
+      created_at: true,
+      last_used: true,
+      user_id: true,
+    },
+  });
+
+  const masked = tokens.map((t) => ({
+    id: t.id,
+    name: t.name,
+    token: t.token,
+    token_preview: t.token ? `${t.token.slice(0, 4)}…${t.token.slice(-4)}` : '—',
+    scopes: t.scopes,
+    created_at: t.created_at,
+    last_used: t.last_used,
+    user_id: t.user_id,
+    team_id: t.team_id ?? null,
+  }));
+
+  return c.json({ tokens: masked });
+});
+
+// Delete API token (current customer only)
+router.delete('/tokens/:tokenId', sessionOrTokenAuth, async (c) => {
+  const db = c.get('db');
+  const apiTokenPayload = c.get('apiToken') as ApiTokenPayload;
+  const customerId = apiTokenPayload.customer?.id;
+  if (!customerId) return c.json({ error: 'Customer not found' }, 403);
+
+  const tokenId = c.req.param('tokenId');
+  const [deleted] = await db
+    .delete(apiTokens)
+    .where(and(eq(apiTokens.id, tokenId), eq(apiTokens.customer_id, customerId)))
+    .returning({ id: apiTokens.id });
+
+  if (!deleted) return c.json({ error: 'Token not found' }, 404);
+  return c.json({ success: true });
 });
 
 export default router;

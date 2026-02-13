@@ -312,7 +312,7 @@ function LLMProfileDetail({
   return (
     <div>
       {/* Back link */}
-      <Link to="/tools" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: 'var(--dark)', fontWeight: 700, textDecoration: 'none' }}>
+      <Link to="/ingest" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: 'var(--dark)', fontWeight: 700, textDecoration: 'none' }}>
         <ArrowLeft size={20} /> Back to Tools
       </Link>
 
@@ -431,7 +431,6 @@ function LLMProfileDetail({
           <User size={20} style={{ color: '#3b82f6', marginBottom: '8px' }} />
           <div style={{ fontSize: '28px', fontWeight: 800 }}>—</div>
           <div style={{ fontSize: '12px', color: '#555', fontWeight: 600 }}>Most Active User</div>
-          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>Requires user attribution in telemetry</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
           <DollarSign size={20} style={{ color: '#10b981', marginBottom: '8px' }} />
@@ -981,7 +980,7 @@ export function ToolProfileDetail() {
   if (!profile) {
     return (
       <div>
-        <Link to="/tools" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: 'var(--dark)', fontWeight: 700, textDecoration: 'none' }}>
+        <Link to="/ingest" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: 'var(--dark)', fontWeight: 700, textDecoration: 'none' }}>
           <ArrowLeft size={20} /> Back to Tools
         </Link>
         <div className="card" style={{ textAlign: 'center', padding: '40px' }}>

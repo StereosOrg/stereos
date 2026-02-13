@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Wrench } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
@@ -17,6 +17,7 @@ interface ToolProfile {
 }
 
 export function ToolProfiles() {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<{ profiles: ToolProfile[] }>({
     queryKey: ['tool-profiles'],
     queryFn: async () => {
@@ -51,10 +52,12 @@ export function ToolProfiles() {
 
   return (
     <div>
-      <div style={{ marginBottom: '40px' }}>
-        <h1 className="heading-1">Tools</h1>
-        <p className="text-large">
-          Telemetry profiles from your connected tools and runtimes.
+      <div style={{ marginBottom: '32px' }}>
+        <h1 className="heading-1" style={{ margin: 0 }}>
+          Global Sources
+        </h1>
+        <p className="text-large" style={{ color: '#555', margin: '8px 0 0' }}>
+          {profiles.length} total global sources
         </p>
       </div>
 
@@ -67,77 +70,177 @@ export function ToolProfiles() {
           }}
         >
           <Wrench size={48} style={{ color: '#999', marginBottom: '16px' }} />
-          <h3 style={{ fontWeight: 700, marginBottom: '8px' }}>No tools connected yet</h3>
+          <h3 style={{ fontWeight: 700, marginBottom: '8px' }}>No sources connected yet</h3>
           <p style={{ color: '#666' }}>
             Send OTLP telemetry to <code>POST /v1/traces</code> with a Bearer token to get started.
           </p>
         </div>
       ) : (
-        <div className="grid-3">
-          {profiles.map((profile) => (
-            <Link
-              key={profile.id}
-              to={`/tools/${profile.id}`}
-              className="card"
-              style={{
-                textDecoration: 'none',
-                color: 'inherit',
-                cursor: 'pointer',
-                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                e.currentTarget.style.boxShadow = '6px 6px 0 var(--border-color)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translate(0, 0)';
-                e.currentTarget.style.boxShadow = '4px 4px 0 var(--border-color)';
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <VendorIcon vendor={profile.vendor} displayName={profile.display_name} size={40} />
-                <div>
-                  <div style={{ fontSize: '18px', fontWeight: 800 }}>{profile.display_name}</div>
-                  {profile.vendor_category && (
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        padding: '2px 8px',
-                        background: 'var(--bg-mint)',
-                        border: '2px solid var(--border-color)',
-                        display: 'inline-block',
-                      }}
-                    >
-                      {profile.vendor_category}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '20px', fontSize: '13px', color: '#555' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '20px', color: 'var(--dark)' }}>
-                    {profile.total_spans.toLocaleString()}
-                  </div>
-                  <div>spans</div>
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '20px', color: profile.total_errors > 0 ? '#c0392b' : 'var(--dark)' }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr
+                style={{
+                  background: 'var(--bg-mint)',
+                  borderBottom: 'var(--border-width) solid var(--border-color)',
+                }}
+              >
+                <th
+                  style={{
+                    padding: '16px 24px',
+                    textAlign: 'left',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: 'var(--dark)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Source
+                </th>
+                <th
+                  style={{
+                    padding: '16px 24px',
+                    textAlign: 'left',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: 'var(--dark)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Category
+                </th>
+                <th
+                  style={{
+                    padding: '16px 24px',
+                    textAlign: 'left',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: 'var(--dark)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Spans
+                </th>
+                <th
+                  style={{
+                    padding: '16px 24px',
+                    textAlign: 'left',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: 'var(--dark)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Errors
+                </th>
+                <th
+                  style={{
+                    padding: '16px 24px',
+                    textAlign: 'left',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: 'var(--dark)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Last Seen
+                </th>
+                <th
+                  style={{
+                    padding: '16px 24px',
+                    textAlign: 'right',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: 'var(--dark)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {profiles.map((profile) => (
+                <tr
+                  key={profile.id}
+                  style={{
+                    borderBottom: 'var(--border-width) solid var(--border-color)',
+                    background: 'var(--bg-white)',
+                  }}
+                >
+                  <td style={{ padding: '16px 24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <VendorIcon vendor={profile.vendor} displayName={profile.display_name} size={40} />
+                      <div>
+                        <p style={{ fontWeight: 600, margin: 0 }}>{profile.display_name}</p>
+                        <p style={{ fontSize: '13px', color: '#555', margin: '2px 0 0' }}>{profile.vendor}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: '16px 24px' }}>
+                    {profile.vendor_category ? (
+                      <span
+                        className="badge"
+                        style={{
+                          background: 'var(--bg-mint)',
+                          color: 'var(--dark)',
+                        }}
+                      >
+                        {profile.vendor_category}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#888' }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '16px 24px', fontWeight: 600 }}>{profile.total_spans.toLocaleString()}</td>
+                  <td
+                    style={{
+                      padding: '16px 24px',
+                      fontWeight: 600,
+                      color: profile.total_errors > 0 ? '#c0392b' : 'var(--dark)',
+                    }}
+                  >
                     {profile.total_errors.toLocaleString()}
-                  </div>
-                  <div>errors</div>
-                </div>
-              </div>
-
-              {profile.last_seen_at && (
-                <div style={{ marginTop: '12px', fontSize: '12px', color: '#888' }}>
-                  Last seen {new Date(profile.last_seen_at).toLocaleString()}
-                </div>
-              )}
-            </Link>
-          ))}
+                  </td>
+                  <td style={{ padding: '16px 24px', color: '#555' }}>
+                    {profile.last_seen_at
+                      ? new Date(profile.last_seen_at).toLocaleString()
+                      : '—'}
+                  </td>
+                  <td style={{ padding: '16px 24px', textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <Link
+                      to={`/ingest/${profile.id}`}
+                      className="btn btn-primary"
+                      style={{ padding: '8px 16px', fontSize: '14px', textDecoration: 'none' }}
+                    >
+                      View
+                    </Link>
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        if (!confirm('Delete this source and all associated spans/metrics?')) return;
+                        await fetch(`${API_BASE}/v1/tool-profiles/${profile.id}`, {
+                          method: 'DELETE',
+                          credentials: 'include',
+                          headers: getAuthHeaders(),
+                        });
+                        queryClient.invalidateQueries({ queryKey: ['tool-profiles'] });
+                      }}
+                      style={{ padding: '8px 16px', fontSize: '14px' }}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

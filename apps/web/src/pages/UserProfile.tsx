@@ -41,6 +41,12 @@ interface UserProfile {
       modification_count: string;
       last_modified: string;
     }>;
+    diffs: Array<{
+      id: string;
+      vendor: string;
+      start_time: string;
+      diff: string;
+    }>;
   };
   history: {
     recentEvents: Array<{
@@ -375,18 +381,18 @@ export function UserProfile() {
             </div>
           )}
 
-          {/* File Activity */}
+          {/* Recent Diffs */}
           <div className="card">
             <h2 className="heading-3" style={{ marginBottom: '16px' }}>
-              Most modified files
+              Recent diffs
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {usage.files.length === 0 ? (
+              {usage.diffs.length === 0 ? (
                 <p style={{ color: '#555', textAlign: 'center', padding: '24px' }}>
-                  No file activity yet
+                  No diffs yet
                 </p>
               ) : (
-                usage.files.map((file, index) => (
+                usage.diffs.map((diff, index) => (
                   <div
                     key={index}
                     style={{
@@ -425,14 +431,21 @@ export function UserProfile() {
                           whiteSpace: 'nowrap',
                           margin: 0,
                         }}
-                        title={file.file_path}
+                        title={diff.diff}
                       >
-                        {file.file_path}
+                        {diff.diff.split('\n')[0] || 'diff'}
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#666', margin: '4px 0 0' }}>
+                        {diff.vendor} · {new Date(diff.start_time).toLocaleString()}
                       </p>
                     </div>
-                    <span className="badge" style={{ flexShrink: 0 }}>
-                      {file.modification_count} edits
-                    </span>
+                    <Link
+                      to={`/diffs/${diff.id}`}
+                      className="btn btn-primary"
+                      style={{ padding: '6px 12px', fontSize: '12px', textDecoration: 'none', flexShrink: 0 }}
+                    >
+                      View diff
+                    </Link>
                   </div>
                 ))
               )}

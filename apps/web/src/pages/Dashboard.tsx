@@ -1,70 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Activity, GitCommit, Users, Terminal } from 'lucide-react';
+import { Activity, Layers, Users } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { VendorIcon } from '../components/ToolIcon';
-import { StereosLogo } from '../components/StereosLogo';
 
-/** Vendor slug for event logo (VENDOR_LOGOS / VendorIcon). Spans use actor_id; provenance maps e.g. cursor-v1 -> cursor. */
-function eventVendorSlug(event: DashboardEvent): string {
-  if (event.type === 'span') return event.actor_id || event.tool || '?';
-  const a = (event.actor_id || '').toLowerCase();
-  if (a.includes('cursor')) return 'cursor';
-  if (a.includes('codex')) return 'codex';
-  return event.actor_id || event.tool || '?';
-}
-
-interface DashboardEvent {
+interface DashboardSpan {
   id: string;
-  type?: 'provenance' | 'span';
   intent: string;
-  actor_id: string;
-  tool: string;
+  vendor: string;
   model?: string | null;
   timestamp: string;
   tool_profile_id?: string | null;
-  user?: { id: string; name: string | null; image: string | null; email: string } | null;
 }
 
 interface DashboardStats {
-  total_events: number;
-  total_commits: number;
-  active_agents: number;
-  recent_events: DashboardEvent[];
-}
-
-/** Same pattern as UserProfile: use user.image URL for avatar, else initial. */
-function EventUserAvatar({ user }: { user: DashboardEvent['user'] }) {
-  const initial = user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?';
-  return (
-    <div
-      style={{
-        width: '40px',
-        height: '40px',
-        borderRadius: '8px',
-        background: user?.image ? 'transparent' : 'var(--dark)',
-        border: '2px solid var(--border-color)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '16px',
-        fontWeight: 700,
-        color: 'white',
-        overflow: 'hidden',
-        flexShrink: 0,
-      }}
-    >
-      {user?.image ? (
-        <img
-          src={user.image}
-          alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-      ) : (
-        initial.toUpperCase()
-      )}
-    </div>
-  );
+  total_spans: number;
+  total_traces: number;
+  active_sources: number;
+  recent_spans: DashboardSpan[];
+  most_active_user: { id: string; name: string | null; email: string | null; span_count: number } | null;
 }
 
 export function Dashboard() {
@@ -103,38 +57,38 @@ export function Dashboard() {
       <div style={{ marginBottom: '40px' }}>
         <h1 className="heading-1">Dashboard</h1>
         <p className="text-large">
-          Track your team's provenance events and code lineage.
+          Live system view powered by spans.
         </p>
       </div>
 
       {/* Stats Grid */}
       <div className="grid-3" style={{ marginBottom: '40px' }}>
         <StatCard
-          title="Total Events"
-          value={stats?.total_events || 0}
+          title="Total Spans"
+          value={stats?.total_spans || 0}
           icon={Activity}
           color="var(--bg-lavender)"
-          description="Provenance events tracked"
+          description="All ingested spans"
         />
         <StatCard
-          title="Linked Commits"
-          value={stats?.total_commits || 0}
-          icon={GitCommit}
+          title="Total Traces"
+          value={stats?.total_traces || 0}
+          icon={Layers}
           color="var(--bg-cream)"
-          description="Commits with provenance data"
+          description="Distinct traces"
         />
         <StatCard
-          title="Active Agents"
-          value={stats?.active_agents ?? 0}
-          icon={StereosLogo}
+          title="Most Active User"
+          value={stats?.most_active_user?.span_count ?? 0}
+          icon={Users}
           color="var(--bg-pink)"
-          description="Distinct agent sources"
+          description={stats?.most_active_user ? `${stats.most_active_user.name || stats.most_active_user.email || 'Unknown'} · 30d` : 'No user activity'}
         />
       </div>
 
       {/* Main Content Area */}
       <div className="grid-2">
-        {/* Recent Events */}
+        {/* Recent Spans */}
         <div className="card card-mint" style={{ minHeight: '400px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
             <div
@@ -150,10 +104,10 @@ export function Dashboard() {
             >
               <Activity size={20} color="white" />
             </div>
-            <h2 className="heading-3">Recent Events</h2>
+            <h2 className="heading-3">Recent Spans</h2>
           </div>
           
-          {!stats?.recent_events?.length ? (
+          {!stats?.recent_spans?.length ? (
             <div
               style={{
                 background: 'var(--bg-white)',
@@ -163,18 +117,16 @@ export function Dashboard() {
               }}
             >
               <p style={{ color: '#666', marginBottom: '16px' }}>
-                No events yet. Start ingesting!
+                No spans yet. Start ingesting!
               </p>
-              <Link to="/events" className="btn btn-primary" style={{ display: 'inline-flex' }}>
-                Search Events
+              <Link to="/ingest" className="btn btn-primary" style={{ display: 'inline-flex' }}>
+                View Global Sources
               </Link>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {stats.recent_events.map((event) => {
-                const href = event.type === 'span' && event.tool_profile_id
-                  ? `/tools/${event.tool_profile_id}`
-                  : `/events/${event.id}`;
+              {stats.recent_spans.map((event) => {
+                const href = event.tool_profile_id ? `/ingest/${event.tool_profile_id}` : '/ingest';
                 return (
                 <Link
                   key={event.id}
@@ -197,7 +149,6 @@ export function Dashboard() {
                     e.currentTarget.style.background = 'var(--bg-white)';
                   }}
                 >
-                  <EventUserAvatar user={event.user} />
                   <div
                     style={{
                       width: '44px',
@@ -212,8 +163,8 @@ export function Dashboard() {
                     }}
                   >
                     <VendorIcon
-                      vendor={eventVendorSlug(event)}
-                      displayName={event.tool || event.actor_id}
+                      vendor={event.vendor}
+                      displayName={event.vendor}
                       size={24}
                     />
                   </div>
@@ -222,14 +173,9 @@ export function Dashboard() {
                       {event.intent}
                     </p>
                     <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#555' }}>
-                      {event.actor_id} · {event.tool}
+                      {event.vendor}
                       {event.model ? ` · ${event.model}` : ''}
                     </p>
-                    {event.user && (
-                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
-                        By {event.user.name || event.user.email || 'Unknown'}
-                      </p>
-                    )}
                   </div>
                   <span style={{ fontSize: '13px', color: '#666', flexShrink: 0 }}>
                     {new Date(event.timestamp).toLocaleString()}
@@ -246,45 +192,24 @@ export function Dashboard() {
           <div className="card card-lavender" style={{ marginBottom: '24px' }}>
             <h2 className="heading-3">Quick Actions</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <Link to="/events" className="btn" style={{ justifyContent: 'flex-start' }}>
+              <Link to="/ingest" className="btn" style={{ justifyContent: 'flex-start' }}>
                 <Activity size={18} />
-                Search Events
+                Global Sources
               </Link>
-              <Link to="/settings" className="btn" style={{ justifyContent: 'flex-start' }}>
+              <Link to="/users" className="btn" style={{ justifyContent: 'flex-start' }}>
                 <Users size={18} />
-                API & Team
+                Team
               </Link>
             </div>
           </div>
 
           <div className="card card-cream">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div
-                style={{
-                  width: '44px',
-                  height: '44px',
-                  background: 'var(--dark)',
-                  border: '3px solid var(--border-color)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '4px 4px 0 var(--border-color)',
-                }}
-              >
-                <Terminal size={22} color="white" />
-              </div>
-              <h2 className="heading-3" style={{ margin: 0 }}>Connect the VS Code Extension</h2>
-            </div>
-            <p style={{ color: '#555', marginBottom: '20px', lineHeight: 1.5 }}>
-              Install the Stereos extension in VS Code to track provenance as you code. One click creates a token and opens the extension to finish setup.
+            <h2 className="heading-3" style={{ marginBottom: '12px' }}>Get data flowing</h2>
+            <p style={{ color: '#555', marginBottom: '16px', lineHeight: 1.5 }}>
+              Ingestion is fully span-based now. Connect your tools and start emitting OTLP spans to see activity here.
             </p>
-            <Link
-              to="/settings"
-              className="btn btn-primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-            >
-              <Terminal size={18} />
-              Connect in Settings
+            <Link to="/ingest" className="btn btn-primary" style={{ display: 'inline-flex' }}>
+              View Global Sources
             </Link>
           </div>
         </div>

@@ -2,10 +2,9 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Home,
-  GitBranch,
-  Search,
-  Wrench,
+  Funnel,
   Users,
+  UsersRound,
   Settings,
   LogOut,
 } from 'lucide-react';
@@ -16,7 +15,7 @@ export function Layout() {
   const location = useLocation();
   const { data: session } = authClient.useSession();
   const hasToken = typeof window !== 'undefined' && !!localStorage.getItem(BEARER_TOKEN_KEY);
-  const { data: me } = useQuery<{ user: { id: string; email: string; name: string | null; image: string | null } }>({
+  const { data: me } = useQuery<{ user: { id: string; email: string; name: string | null; image: string | null; role?: string } }>({
     queryKey: ['me'],
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() });
@@ -25,13 +24,12 @@ export function Layout() {
     },
     enabled: hasToken,
   });
-  const profileUser = session?.user ?? me?.user;
+  const profileUser = (session?.user && (session.user as { role?: string }).role) ? session.user : me?.user ?? session?.user;
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
-    { path: '/provenance', label: 'Provenance', icon: GitBranch },
-    { path: '/events', label: 'Events', icon: Search },
-    { path: '/tools', label: 'Tools', icon: Wrench },
+    { path: '/ingest', label: 'Global Ingest', icon: Funnel },
+    ...(profileUser?.role === 'admin' ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];

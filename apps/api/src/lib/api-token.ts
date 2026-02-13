@@ -36,6 +36,7 @@ export async function validateApiToken(c: { get: (k: 'db') => ReturnType<typeof 
   return {
     ...apiToken,
     user_id: userId,
+    team_id: apiToken.team_id ?? null,
     customer: {
       ...customer,
       user: { id: customer.user_id },
@@ -96,4 +97,4 @@ export const sessionOrTokenAuth = async (c: any, next: any) => {
   await next();
 };
 
-export type ApiTokenPayload = { user_id?: string | null; customer: { id: string; user_id?: string; billing_status: string }; [k: string]: unknown };
+export type ApiTokenPayload = { user_id?: string | null; team_id?: string | null; customer: { id: string; user_id?: string; billing_status: string }; [k: string]: unknown };

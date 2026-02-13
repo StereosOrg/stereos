@@ -73,7 +73,7 @@ router.post('/invites', requireAdmin, zValidator('json', inviteCreateSchema), as
   const inviterName = (await db.query.users.findFirst({ where: eq(users.id, adminUser!.id), columns: { name: true } }))?.name || 'A teammate';
 
   const apiKey = (c.env as any)?.RESEND_API_KEY as string | undefined;
-  const fromEmail = (c.env as any)?.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const fromEmail = (c.env as any)?.RESEND_FROM_EMAIL || 'hello@ops.trystereos.com';
   if (!apiKey) {
     console.warn('[Invites] RESEND_API_KEY not set; skipping invite email to', email);
   } else {

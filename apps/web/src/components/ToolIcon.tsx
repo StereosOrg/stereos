@@ -165,6 +165,7 @@ const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number;
   openai: OPENAI_CODEX_LOGO,
   codex: OPENAI_CODEX_LOGO, // legacy: existing profiles may still have vendor=codex
   'kilo-code': KILO_CODE_LOGO,
+  openrouter: 'https://uxwing.com/wp-content/themes/uxwing/download/brands-and-social-media/openrouter-icon.png',
 };
 
 // ── LLM Provider metadata for the LLM-focused detail view ──────────────
