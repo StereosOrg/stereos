@@ -25,11 +25,12 @@ export function Layout() {
     enabled: hasToken,
   });
   const profileUser = (session?.user && (session.user as { role?: string }).role) ? session.user : me?.user ?? session?.user;
+  const isAdmin = !!profileUser && 'role' in profileUser && profileUser.role === 'admin';
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
     { path: '/ingest', label: 'Global Ingest', icon: Funnel },
-    ...(profileUser?.role === 'admin' ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
+    ...(isAdmin ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];
