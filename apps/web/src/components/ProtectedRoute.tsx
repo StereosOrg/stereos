@@ -76,7 +76,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
           style={{
             width: '48px',
             height: '48px',
-            border: '3px solid #1f2937',
+            border: '1px solid var(--border-strong)',
             borderTopColor: '#3b82f6',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',

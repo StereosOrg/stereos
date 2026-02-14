@@ -195,6 +195,32 @@ export async function createEmbeddedCheckoutSession(
   }
 }
 
+/** Create Stripe Billing Portal session for managing subscription (update payment, view invoices, cancel). */
+export async function createBillingPortalSession(
+  stripeCustomerId: string,
+  returnUrl: string,
+  stripeApiKey?: string
+): Promise<{ url: string } | null> {
+  const client = getStripe(stripeApiKey);
+  if (!client) {
+    console.warn('Stripe not configured, cannot create billing portal session');
+    return null;
+  }
+  if (stripeCustomerId.startsWith('mock_')) {
+    return null;
+  }
+  try {
+    const session = await client.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: returnUrl,
+    });
+    return session.url ? { url: session.url } : null;
+  } catch (error) {
+    console.error('Failed to create billing portal session:', error);
+    return null;
+  }
+}
+
 // Confirm embedded checkout session. Pass stripeApiKey in Workers.
 export async function confirmCheckoutSession(
   db: Database,

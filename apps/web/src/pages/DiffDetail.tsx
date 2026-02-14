@@ -28,7 +28,7 @@ export function DiffDetail() {
           style={{
             width: '48px',
             height: '48px',
-            border: '3px solid var(--border-color)',
+            border: '2px solid var(--border-default)',
             borderTopColor: 'var(--bg-mint)',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',
@@ -43,7 +43,7 @@ export function DiffDetail() {
 
   if (error || !data?.span) {
     return (
-      <div className="card" style={{ padding: '24px', background: 'var(--bg-pink)', border: '3px solid #dc2626' }}>
+      <div className="card" style={{ padding: '24px', background: 'var(--bg-pink)', border: '1px solid #dc2626' }}>
         <h2 className="heading-3" style={{ marginBottom: '8px', color: '#991b1b' }}>Error</h2>
         <p style={{ color: '#555' }}>Unable to load diff.</p>
       </div>

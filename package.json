@@ -22,9 +22,11 @@
     "db:migrate:019": "bun run scripts/run-migrate-019.ts",
     "db:migrate:020": "bun run scripts/run-migrate-020.ts",
     "lint": "eslint . --ext .ts,.tsx",
-"typecheck": "tsc --noEmit",
-  "package:extension": "bash packages/vscode-extension/scripts/pack-isolated.sh"
-},
+    "typecheck": "tsc --noEmit",
+    "test": "npm --workspace @stereos/api run test",
+    "test:watch": "npx vitest",
+    "package:extension": "bash packages/vscode-extension/scripts/pack-isolated.sh"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -45,7 +47,8 @@
     "concurrently": "^9.1.2",
     "drizzle-kit": "^0.30.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.0"
   },
   "engines": {
     "node": ">=20.0.0"

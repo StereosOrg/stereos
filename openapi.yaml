@@ -1,0 +1,1038 @@
+openapi: 3.1.0
+info:
+  title: Stereos API
+  description: |
+    Stereos is a collaboration-first platform that captures LLM spans (OTLP/GenAI telemetry)
+    and turns them into team-level visibility, user profiles, and diff drilldowns.
+  version: 1.0.0
+  contact:
+    name: Stereos
+
+servers:
+  - url: https://api.trystereos.com
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Onboarding
+  - name: Billing
+  - name: Users
+  - name: Teams
+  - name: OpenRouter
+  - name: Telemetry
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /v1/onboarding/status:
+    get:
+      tags: [Onboarding]
+      summary: Check onboarding status
+      security: []
+      responses:
+        '200':
+          description: Onboarding/payment status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needsAuth:
+                    type: boolean
+                  needsOnboarding:
+                    type: boolean
+                  needsPayment:
+                    type: boolean
+                  isAdmin:
+                    type: boolean
+                  billing_email:
+                    type: string
+                  onboarding_completed:
+                    type: boolean
+
+  /v1/onboarding/complete:
+    post:
+      tags: [Onboarding]
+      summary: Complete onboarding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, title, companyName, billingEmail]
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                title: { type: string; enum: [engineer, manager, cto, founder, vp, lead, architect, product_manager] }
+                companyName: { type: string }
+                billingEmail: { type: string; format: email }
+      responses:
+        '200':
+          description: Onboarding completed
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+
+  /v1/onboarding/checkout-session:
+    post:
+      tags: [Onboarding]
+      summary: Create embedded checkout session (start trial)
+      description: Admin only. Creates Stripe checkout session for subscription setup.
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret: { type: string }
+        '403':
+          description: Admin only
+        '404':
+          description: Customer not found
+
+  /v1/onboarding/confirm-checkout:
+    post:
+      tags: [Onboarding]
+      summary: Confirm checkout after redirect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: string }
+      responses:
+        '200':
+          description: Confirmed
+        '400':
+          description: Invalid session
+
+  /v1/customers/me:
+    get:
+      tags: [Auth]
+      summary: Get current customer
+      responses:
+        '200':
+          description: Customer info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customer:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      company_name: { type: string }
+                      billing_email: { type: string }
+                      payment_info_provided: { type: boolean }
+                      onboarding_completed: { type: boolean }
+                      billing_status: { type: string }
+        '404':
+          description: Customer not found
+
+    patch:
+      tags: [Auth]
+      summary: Update current customer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                billing_email: { type: string; format: email }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+
+  /v1/billing/portal:
+    post:
+      tags: [Billing]
+      summary: Create Stripe Billing Portal session
+      description: Returns URL to redirect user for managing subscription (payment method, invoices, cancel).
+      responses:
+        '200':
+          description: Portal URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string; format: uri }
+        '400':
+          description: No Stripe customer
+        '401':
+          description: Unauthorized
+        '404':
+          description: Customer not found
+
+  /v1/auth/magic-link/exchange:
+    post:
+      tags: [Auth]
+      summary: Exchange magic link token for session
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Session token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_token: { type: string }
+        '400':
+          description: Invalid or expired token
+
+  /v1/tokens:
+    post:
+      tags: [Auth]
+      summary: Create API token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, team_id, name]
+              properties:
+                customer_id: { type: string }
+                team_id: { type: string }
+                name: { type: string }
+      responses:
+        '201':
+          description: Token created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  id: { type: string }
+        '400':
+          description: Team-scoped key required
+        '401':
+          description: Unauthorized
+
+    get:
+      tags: [Auth]
+      summary: List API tokens
+      responses:
+        '200':
+          description: List of tokens
+
+  /v1/tokens/{tokenId}:
+    delete:
+      tags: [Auth]
+      summary: Revoke API token
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Revoked
+        '401':
+          description: Unauthorized
+
+  /v1/users:
+    get:
+      tags: [Users]
+      summary: List users (admin only)
+      responses:
+        '200':
+          description: List of users
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin/manager required
+
+  /v1/users/{userId}/profile:
+    get:
+      tags: [Users]
+      summary: Get user profile
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User profile with usage stats
+        '401':
+          description: Unauthorized
+        '404':
+          description: User not found
+
+  /v1/users/{userId}/role:
+    patch:
+      tags: [Users]
+      summary: Update user role (admin only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string; enum: [user, manager, admin] }
+      responses:
+        '200':
+          description: Updated
+        '403':
+          description: Admin required
+
+  /v1/users/{userId}/team:
+    patch:
+      tags: [Users]
+      summary: Assign user to team (admin only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                team_id: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '403':
+          description: Admin required
+
+  /v1/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      responses:
+        '200':
+          description: Current user
+        '401':
+          description: Unauthorized
+
+    patch:
+      tags: [Auth]
+      summary: Update current user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+
+  /v1/teams:
+    get:
+      tags: [Teams]
+      summary: List teams
+      responses:
+        '200':
+          description: List of teams
+        '401':
+          description: Unauthorized
+
+    post:
+      tags: [Teams]
+      summary: Create team (admin only)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, manager_user_id]
+              properties:
+                name: { type: string }
+                manager_user_id: { type: string }
+      responses:
+        '201':
+          description: Team created
+        '400':
+          description: Validation error
+        '403':
+          description: Admin required
+
+  /v1/teams/{teamId}:
+    get:
+      tags: [Teams]
+      summary: Get team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Team details
+        '401':
+          description: Unauthorized
+        '404':
+          description: Team not found
+
+    patch:
+      tags: [Teams]
+      summary: Update team (admin only)
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '403':
+          description: Admin required
+
+    delete:
+      tags: [Teams]
+      summary: Delete team (admin only)
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '403':
+          description: Admin required
+
+  /v1/teams/{teamId}/profile:
+    get:
+      tags: [Teams]
+      summary: Get team profile with stats
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Team profile with spans, vendors, diffs
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not a team member
+
+  /v1/teams/{teamId}/unarchive:
+    patch:
+      tags: [Teams]
+      summary: Unarchive team (admin only)
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Unarchived
+        '403':
+          description: Admin required
+
+  /v1/openrouter/keys/customer:
+    get:
+      tags: [OpenRouter]
+      summary: List all OpenRouter keys for customer (admin/manager)
+      responses:
+        '200':
+          description: List of keys
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin/manager required
+
+  /v1/openrouter/keys/user:
+    get:
+      tags: [OpenRouter]
+      summary: List user's OpenRouter keys
+      responses:
+        '200':
+          description: User and team keys
+
+  /v1/openrouter/keys/user/{userId}:
+    get:
+      tags: [OpenRouter]
+      summary: List keys for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User and team keys
+        '403':
+          description: Forbidden
+
+    post:
+      tags: [OpenRouter]
+      summary: Create user OpenRouter key (admin/manager)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, customer_id]
+              properties:
+                name: { type: string }
+                customer_id: { type: string }
+                limit: { type: number }
+                limit_reset: { type: string; enum: [daily, weekly, monthly] }
+      responses:
+        '201':
+          description: Key created
+        '403':
+          description: Admin/manager required
+
+  /v1/openrouter/keys/user/{hash}:
+    delete:
+      tags: [OpenRouter]
+      summary: Delete user OpenRouter key
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '403':
+          description: Forbidden
+
+  /v1/openrouter/keys/team/{teamId}:
+    get:
+      tags: [OpenRouter]
+      summary: List team OpenRouter keys
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Team keys
+        '403':
+          description: Not a team member
+
+    post:
+      tags: [OpenRouter]
+      summary: Create team OpenRouter key (admin/manager)
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '201':
+          description: Key created
+        '403':
+          description: Admin/manager required
+
+  /v1/openrouter/keys/team/{teamId}/{hash}:
+    delete:
+      tags: [OpenRouter]
+      summary: Delete team OpenRouter key
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '403':
+          description: Admin/manager required
+
+  /v1/openrouter/keys/{hash}:
+    delete:
+      tags: [OpenRouter]
+      summary: Delete any OpenRouter key (admin/manager)
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '403':
+          description: Admin/manager required
+
+  /v1/openrouter/keys/{hash}/details:
+    get:
+      tags: [OpenRouter]
+      summary: Get OpenRouter key details (usage, limit)
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Key details with usage from OpenRouter
+        '403':
+          description: Forbidden
+        '404':
+          description: Key not found
+
+  /v1/openrouter/guardrails:
+    get:
+      tags: [OpenRouter]
+      summary: List guardrails (admin/manager)
+      responses:
+        '200':
+          description: List of guardrails
+        '403':
+          description: Admin/manager required
+
+    post:
+      tags: [OpenRouter]
+      summary: Create guardrail (admin/manager)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                limit_usd: { type: number }
+                reset_interval: { type: string; enum: [daily, weekly, monthly] }
+                allowed_providers: { type: array; items: { type: string } }
+                allowed_models: { type: array; items: { type: string } }
+      responses:
+        '201':
+          description: Guardrail created
+        '403':
+          description: Admin/manager required
+
+  /v1/openrouter/guardrails/{id}/assignments/keys:
+    get:
+      tags: [OpenRouter]
+      summary: List guardrail key assignments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Key assignments
+
+    post:
+      tags: [OpenRouter]
+      summary: Assign keys to guardrail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key_hashes: { type: array; items: { type: string } }
+      responses:
+        '200':
+          description: Assigned
+
+    delete:
+      tags: [OpenRouter]
+      summary: Unassign keys from guardrail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key_hashes: { type: array; items: { type: string } }
+      responses:
+        '200':
+          description: Unassigned
+
+  /v1/traces:
+    post:
+      tags: [Telemetry]
+      summary: Ingest OTLP traces (OpenRouter Broadcast)
+      description: |
+        OpenRouter sends traces here via Broadcast. Requires Authorization Bearer OPENROUTER_BROADCAST_SECRET.
+        Request body must include user (Stereos user_id) in span attributes for attribution.
+      security:
+        - broadcastSecret: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resourceSpans]
+              properties:
+                resourceSpans:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ResourceSpans'
+      responses:
+        '200':
+          description: Traces ingested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  partialSuccess:
+                    type: object
+                    properties:
+                      rejectedSpans: { type: integer }
+                      acceptedSpans: { type: integer }
+        '400':
+          description: Invalid body or unable to attribute (user required)
+        '401':
+          description: Invalid broadcast secret
+        '503':
+          description: Broadcast not configured
+
+    head:
+      tags: [Telemetry]
+      summary: Preflight for traces
+      security: []
+      responses:
+        '200':
+          description: OK
+
+  /v1/dashboard:
+    get:
+      tags: [Telemetry]
+      summary: Dashboard stats
+      responses:
+        '200':
+          description: Total spans, traces, recent spans, most active user
+        '401':
+          description: Unauthorized
+
+  /v1/tool-profiles:
+    get:
+      tags: [Telemetry]
+      summary: List tool profiles
+      responses:
+        '200':
+          description: List of tool profiles (vendors)
+        '401':
+          description: Unauthorized
+
+  /v1/tool-profiles/{profileId}:
+    get:
+      tags: [Telemetry]
+      summary: Get tool profile with latency stats
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Profile and latency percentiles
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+    delete:
+      tags: [Telemetry]
+      summary: Delete tool profile (admin only)
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '403':
+          description: Admin required
+
+  /v1/tool-profiles/{profileId}/spans:
+    get:
+      tags: [Telemetry]
+      summary: List spans for tool profile
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer; default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer; default: 0 }
+      responses:
+        '200':
+          description: Spans
+        '401':
+          description: Unauthorized
+
+  /v1/tool-profiles/{profileId}/metrics:
+    get:
+      tags: [Telemetry]
+      summary: Get metrics for tool profile
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Metrics
+        '401':
+          description: Unauthorized
+
+  /v1/tool-profiles/{profileId}/llm-stats:
+    get:
+      tags: [Telemetry]
+      summary: LLM usage stats (tokens, latency, models)
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Model usage, daily usage, latency
+        '401':
+          description: Unauthorized
+
+  /v1/tool-profiles/{profileId}/timeline:
+    get:
+      tags: [Telemetry]
+      summary: Hourly timeline (last 24h)
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Hourly buckets with span/error counts
+        '401':
+          description: Unauthorized
+
+  /v1/spans/{spanId}:
+    get:
+      tags: [Telemetry]
+      summary: Get span (for diff drilldown)
+      parameters:
+        - name: spanId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Span with attributes (including tool.output.diff)
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /v1/invites:
+    post:
+      tags: [Auth]
+      summary: Create invite (admin only)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string; format: email }
+                role: { type: string; enum: [user, manager]; default: user }
+                team_id: { type: string }
+      responses:
+        '201':
+          description: Invite created
+        '403':
+          description: Admin required
+
+  /v1/invites/validate:
+    get:
+      tags: [Auth]
+      summary: Validate invite token
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      security: []
+      responses:
+        '200':
+          description: Valid invite info
+        '400':
+          description: Invalid or expired
+
+  /v1/invites/accept:
+    post:
+      tags: [Auth]
+      summary: Accept invite
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+                firstName: { type: string }
+                lastName: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Invite accepted
+        '400':
+          description: Invalid or expired
+
+  /v1/webhooks/stripe:
+    post:
+      tags: [Billing]
+      summary: Stripe webhook
+      description: Handles subscription and payment events.
+      security: []
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        '200':
+          description: Received
+        '400':
+          description: Invalid signature
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Session token or API token (Bearer sk_...)
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+    broadcastSecret:
+      type: http
+      scheme: bearer
+      description: OPENROUTER_BROADCAST_SECRET (for /v1/traces only)
+
+  schemas:
+    ResourceSpans:
+      type: object
+      description: OTLP ResourceSpans
+      properties:
+        resource:
+          type: object
+          properties:
+            attributes:
+              type: array
+              items:
+                type: object
+                properties:
+                  key: { type: string }
+                  value:
+                    type: object
+                    properties:
+                      stringValue: { type: string }
+                      intValue: { type: [string, number] }
+        scopeSpans:
+          type: array
+          items:
+            type: object
+            properties:
+              scope: { type: object }
+              spans:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    traceId: { type: string }
+                    spanId: { type: string }
+                    parentSpanId: { type: string }
+                    name: { type: string }
+                    kind: { type: integer }
+                    startTimeUnixNano: { type: string }
+                    endTimeUnixNano: { type: string }
+                    attributes:
+                      type: array

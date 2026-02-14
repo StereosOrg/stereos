@@ -138,7 +138,7 @@ export function Onboarding() {
                 flex: 1,
                 height: '8px',
                 background: s <= step ? 'var(--dark)' : '#ddd',
-                border: '2px solid var(--border-color)',
+                border: '1px solid var(--border-default)',
               }}
             />
           ))}
@@ -150,7 +150,7 @@ export function Onboarding() {
             <div
               style={{
                 background: '#fee2e2',
-                border: '3px solid #dc2626',
+                border: '1px solid #dc2626',
                 padding: '16px',
                 marginBottom: '24px',
                 color: '#dc2626',

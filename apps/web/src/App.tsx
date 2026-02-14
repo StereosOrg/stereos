@@ -14,9 +14,11 @@ import { VerifyEmail } from './pages/VerifyEmail';
 import { AcceptInvite } from './pages/AcceptInvite';
 import { AuthCallback } from './pages/AuthCallback';
 import { VerifyMagic } from './pages/VerifyMagic';
-import { ToolProfiles } from './pages/ToolProfiles';
-import { ToolProfileDetail } from './pages/ToolProfileDetail';
+import { Billing } from './pages/Billing';
 import { IndividualProfile } from './pages/IndividualProfile';
+import { KeyDetail } from './pages/KeyDetail';
+import { KeyManagement } from './pages/KeyManagement';
+import { Guardrails } from './pages/Guardrails';
 import { DiffDetail } from './pages/DiffDetail';
 import { TeamProfile } from './pages/TeamProfile';
 import { Teams } from './pages/Teams';
@@ -51,8 +53,10 @@ function App() {
       {/* Protected routes with Layout - require auth + onboarding + payment */}
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
-        <Route path="ingest" element={<ToolProfiles />} />
-        <Route path="ingest/:profileId" element={<ToolProfileDetail />} />
+        <Route path="keys/:hash" element={<KeyDetail />} />
+        <Route path="keys" element={<KeyManagement />} />
+        <Route path="guardrails" element={<Guardrails />} />
+        <Route path="billing" element={<Billing />} />
         <Route path="individual-profile" element={<IndividualProfile />} />
         <Route path="diffs/:spanId" element={<DiffDetail />} />
         <Route path="teams" element={<Teams />} />

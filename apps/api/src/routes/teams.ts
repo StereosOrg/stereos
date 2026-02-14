@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, sql, desc, isNull } from 'drizzle-orm';
+import { and, eq, sql, desc, or, isNull, inArray } from 'drizzle-orm';
 import { teams, teamMembers, users, telemetrySpans } from '@stereos/shared/schema';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
 import { sessionOrTokenAuth } from '../lib/api-token.js';
@@ -197,6 +197,9 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
   const team = await db.query.teams.findFirst({ where: eq(teams.id, teamId) });
   if (!team || team.archived_at) return c.json({ error: 'Team not found' }, 404);
 
+  // Include spans with team_id = teamId OR (team_id IS NULL and user is a team member)
+  const teamSpanCondition = sql`(team_id = ${teamId} OR (team_id IS NULL AND user_id IN (SELECT user_id FROM "TeamMember" WHERE team_id = ${teamId})))`;
+
   const totalsResult = await db.execute(sql`
     SELECT
       COUNT(*)::int AS total_spans,
@@ -205,12 +208,16 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
       MIN(start_time) AS first_activity,
       MAX(start_time) AS last_activity
     FROM "TelemetrySpan"
-    WHERE team_id = ${teamId}
+    WHERE ${teamSpanCondition}
   `);
   const totalsRow = Array.isArray(totalsResult) ? totalsResult[0] : (totalsResult as { rows?: unknown[] })?.rows?.[0];
 
+  const memberIds = await db.select({ user_id: teamMembers.user_id }).from(teamMembers).where(eq(teamMembers.team_id, teamId));
+  const memberUserIds = memberIds.map((m) => m.user_id);
   const recentSpans = await db.query.telemetrySpans.findMany({
-    where: eq(telemetrySpans.team_id, teamId),
+    where: memberUserIds.length > 0
+      ? or(eq(telemetrySpans.team_id, teamId), and(isNull(telemetrySpans.team_id), inArray(telemetrySpans.user_id, memberUserIds)))
+      : eq(telemetrySpans.team_id, teamId),
     orderBy: desc(telemetrySpans.start_time),
     limit: 20,
     columns: {
@@ -225,7 +232,7 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
   const activeMembersResult = await db.execute(sql`
     SELECT COUNT(DISTINCT user_id)::int AS active_members
     FROM "TelemetrySpan"
-    WHERE team_id = ${teamId}
+    WHERE ${teamSpanCondition}
       AND user_id IS NOT NULL
       AND start_time >= NOW() - INTERVAL '30 days'
   `);
@@ -234,7 +241,7 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
   const topVendorsResult = await db.execute(sql`
     SELECT vendor, COUNT(*)::int AS span_count
     FROM "TelemetrySpan"
-    WHERE team_id = ${teamId}
+    WHERE ${teamSpanCondition}
       AND start_time >= NOW() - INTERVAL '30 days'
     GROUP BY vendor
     ORDER BY span_count DESC
@@ -255,7 +262,7 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
   const recentDiffsResult = await db.execute(sql`
     SELECT id, vendor, start_time, span_attributes->>'tool.output.diff' AS diff
     FROM "TelemetrySpan"
-    WHERE team_id = ${teamId}
+    WHERE ${teamSpanCondition}
       AND span_attributes->>'tool.output.diff' IS NOT NULL
     ORDER BY start_time DESC
     LIMIT 5
@@ -274,7 +281,7 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
     SELECT
       COUNT(DISTINCT trace_id)::float / NULLIF(COUNT(DISTINCT user_id), 0) AS traces_per_member
     FROM "TelemetrySpan"
-    WHERE team_id = ${teamId}
+    WHERE ${teamSpanCondition}
       AND user_id IS NOT NULL
       AND start_time >= NOW() - INTERVAL '30 days'
   `);

@@ -6,58 +6,59 @@ import { CreditCard } from 'lucide-react';
 import { AuthLayout } from '../components/AuthLayout';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 
-// Neobrutalist Appearance API: matches apps/web/src/styles/neobrutalist.css (--dark, --border-width, --shadow-offset, .btn, .input)
+// Stripe appearance: matches apps/web/src/styles/neobrutalist.css border & elevation system
 const STRIPE_APPEARANCE = {
   theme: 'flat' as const,
   variables: {
-    colorPrimary: '#1a1a1a',
+    colorPrimary: '#111827',
     colorBackground: '#ffffff',
-    colorText: '#1a1a1a',
+    colorText: '#111827',
     colorDanger: '#dc2626',
     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    borderRadius: '0',
+    borderRadius: '6px',
     spacingUnit: '4px',
   },
   rules: {
     '.Input': {
-      border: '3px solid #1a1a1a',
-      boxShadow: '4px 4px 0 #1a1a1a',
+      border: '1px solid #d1d5db',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       backgroundColor: '#ffffff',
     },
     '.Input:focus': {
-      boxShadow: '4px 4px 0 #1a1a1a',
+      borderColor: '#2563eb',
+      boxShadow: '0 0 0 3px rgba(37,99,235,0.15)',
     },
     '.Input--invalid': {
       borderColor: '#dc2626',
-      boxShadow: '4px 4px 0 #dc2626',
+      boxShadow: '0 0 0 2px rgba(220,38,38,0.15)',
     },
     '.Label': {
-      color: '#1a1a1a',
+      color: '#111827',
       fontWeight: '600',
     },
     '.Tab': {
-      border: '3px solid #1a1a1a',
-      boxShadow: '4px 4px 0 #1a1a1a',
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       backgroundColor: '#ffffff',
     },
     '.Tab:hover': {
-      color: '#1a1a1a',
+      color: '#111827',
     },
     '.Tab--selected': {
-      borderColor: '#1a1a1a',
-      backgroundColor: '#1a1a1a',
+      borderColor: '#111827',
+      backgroundColor: '#111827',
       color: '#ffffff',
-      boxShadow: '6px 6px 0 #1a1a1a',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04)',
     },
     '.Button': {
-      border: '3px solid #1a1a1a',
-      backgroundColor: '#1a1a1a',
+      border: '1px solid #111827',
+      backgroundColor: '#111827',
       color: '#ffffff',
-      boxShadow: '6px 6px 0 #1a1a1a',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04)',
       fontWeight: '600',
     },
     '.Button:hover': {
-      backgroundColor: '#2d2d2d',
+      backgroundColor: '#1f2937',
     },
     '.Error': {
       color: '#dc2626',
@@ -179,17 +180,17 @@ export function StartTrial() {
     padding: 0,
     overflow: 'visible',
     background: 'var(--bg-white)',
-    border: 'var(--border-width) solid var(--border-color)',
-    boxShadow: 'var(--shadow-offset) var(--shadow-offset) 0 var(--border-color)',
+    border: '1px solid var(--border-default)',
+    boxShadow: 'var(--shadow-md)',
   };
 
   const errorBlockStyle: React.CSSProperties = {
-    background: 'var(--bg-pink)',
-    border: 'var(--border-width) solid #dc2626',
+    background: '#fef2f2',
+    border: '1px solid #dc2626',
+    borderRadius: '8px',
     padding: '16px 20px',
     color: '#dc2626',
     fontWeight: 700,
-    boxShadow: '4px 4px 0 #dc2626',
   };
 
   if (sessionId) {
@@ -202,7 +203,7 @@ export function StartTrial() {
                 style={{
                   width: '48px',
                   height: '48px',
-                  border: '3px solid var(--border-color)',
+                  border: '2px solid var(--border-default)',
                   borderTopColor: 'var(--dark)',
                   borderRadius: '50%',
                   animation: 'spin 0.8s linear infinite',
@@ -246,7 +247,7 @@ export function StartTrial() {
               width: '48px',
               height: '48px',
               margin: '0 auto 16px',
-              border: '3px solid var(--border-color)',
+                  border: '2px solid var(--border-default)',
               borderTopColor: 'var(--dark)',
               borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
@@ -305,7 +306,7 @@ export function StartTrial() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '4px 4px 0 var(--border-color)',
+              boxShadow: 'var(--shadow-sm)',
             }}
           >
             <CreditCard size={22} color="var(--dark)" strokeWidth={3} />
@@ -436,10 +437,10 @@ function CheckoutForm({ onError }: { onError: (msg: string) => void }) {
           padding: '12px 24px',
           fontSize: '16px',
           fontWeight: 600,
-          border: 'var(--border-width) solid var(--border-color)',
+          border: '1px solid var(--dark)',
           background: 'var(--dark)',
           color: 'white',
-          boxShadow: 'var(--shadow-offset) var(--shadow-offset) 0 var(--border-color)',
+          boxShadow: 'var(--shadow-md)',
           cursor: submitting ? 'not-allowed' : 'pointer',
         }}
       >

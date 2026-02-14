@@ -75,7 +75,7 @@ export function AcceptInvite() {
             style={{
               width: '48px',
               height: '48px',
-              border: '3px solid var(--border-color)',
+              border: '1px solid var(--border-default)',
               borderTopColor: 'var(--bg-mint)',
               borderRadius: '50%',
               animation: 'spin 1s linear infinite',
@@ -113,7 +113,7 @@ export function AcceptInvite() {
               height: '56px',
               borderRadius: '12px',
               background: 'var(--bg-mint)',
-              border: '3px solid var(--border-color)',
+              border: '1px solid var(--border-default)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -180,7 +180,7 @@ export function AcceptInvite() {
             <p style={{ fontSize: '12px', color: '#666', marginTop: '6px' }}>At least 8 characters</p>
           </div>
           {error && (
-            <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '3px solid #dc2626', color: '#dc2626', fontWeight: 600, fontSize: '14px' }}>
+            <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #dc2626', color: '#dc2626', fontWeight: 600, fontSize: '14px' }}>
               {error}
             </div>
           )}

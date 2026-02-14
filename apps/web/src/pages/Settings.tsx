@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { Copy, Key, User } from 'lucide-react';
+import { Copy, Key, Trash2, User } from 'lucide-react';
 
 interface Customer {
   id: string;
@@ -33,6 +34,17 @@ interface Team {
   name: string;
 }
 
+interface OpenRouterKey {
+  id: string;
+  openrouter_key_hash: string;
+  name: string;
+  customer_id: string;
+  user_id: string | null;
+  limit_usd: string | null;
+  limit_reset: string | null;
+  created_at: string;
+}
+
 export function Settings() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [customerLoading, setCustomerLoading] = useState(true);
@@ -50,6 +62,27 @@ export function Settings() {
   const [tokensLoading, setTokensLoading] = useState(true);
   const [tokensError, setTokensError] = useState('');
   const [teams, setTeams] = useState<Team[]>([]);
+  const [openrouterKeys, setOpenrouterKeys] = useState<OpenRouterKey[]>([]);
+  const [openrouterKeysLoading, setOpenrouterKeysLoading] = useState(true);
+  const [openrouterKeysError, setOpenrouterKeysError] = useState('');
+
+  const loadOpenrouterKeys = async () => {
+    setOpenrouterKeysLoading(true);
+    setOpenrouterKeysError('');
+    try {
+      const res = await fetch(`${API_BASE}/v1/keys/user`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch OpenRouter keys');
+      setOpenrouterKeys(data.keys ?? []);
+    } catch (e) {
+      setOpenrouterKeysError(e instanceof Error ? e.message : 'Failed to fetch OpenRouter keys');
+    } finally {
+      setOpenrouterKeysLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetch(`${API_BASE}/v1/customers/me`, { credentials: 'include', headers: getAuthHeaders() })
@@ -102,6 +135,25 @@ export function Settings() {
     loadTokens();
   }, []);
 
+  useEffect(() => {
+    loadOpenrouterKeys();
+  }, []);
+
+  const revokeOpenrouterKey = async (hash: string) => {
+    if (!confirm('Revoke this OpenRouter key? It will stop working immediately.')) return;
+    try {
+      const res = await fetch(`${API_BASE}/v1/keys/user/${encodeURIComponent(hash)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to revoke key');
+      await loadOpenrouterKeys();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to revoke key');
+    }
+  };
 
   const createToken = async () => {
     if (!customer?.id || !tokenName.trim()) return;
@@ -224,7 +276,7 @@ export function Settings() {
                   height: '80px',
                   borderRadius: '50%',
                   background: 'var(--bg-cream)',
-                  border: '3px solid var(--border-color)',
+                  border: '1px solid var(--border-default)',
                   overflow: 'hidden',
                   display: 'flex',
                   alignItems: 'center',
@@ -273,7 +325,7 @@ export function Settings() {
                 style={{
                   padding: '12px',
                   background: profileMessage.type === 'success' ? 'var(--bg-mint)' : '#fee2e2',
-                  border: `3px solid ${profileMessage.type === 'success' ? 'var(--border-color)' : '#dc2626'}`,
+                  border: `1px solid ${profileMessage.type === 'success' ? 'var(--border-default)' : '#dc2626'}`,
                   color: profileMessage.type === 'success' ? 'var(--dark)' : '#dc2626',
                   fontWeight: 600,
                 }}
@@ -362,7 +414,7 @@ export function Settings() {
             )}
 
             {tokenError && (
-              <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '3px solid #dc2626', color: '#dc2626', fontWeight: 600 }}>
+              <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #dc2626', color: '#dc2626', fontWeight: 600 }}>
                 {tokenError}
               </div>
             )}
@@ -377,7 +429,7 @@ export function Settings() {
             </button>
 
             {createdToken && (
-              <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-mint)', border: '3px solid var(--border-color)' }}>
+              <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '8px' }}>
                 <p style={{ fontWeight: 600, marginBottom: '8px' }}>Token created — copy it now. It won’t be shown again.</p>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <code style={{ flex: '1 1 200px', wordBreak: 'break-all', fontSize: '13px' }}>{createdToken}</code>
@@ -403,7 +455,7 @@ export function Settings() {
         {tokensLoading ? (
           <p style={{ color: '#666' }}>Loading…</p>
         ) : tokensError ? (
-          <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '3px solid #dc2626', color: '#dc2626', fontWeight: 600 }}>
+          <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #dc2626', color: '#dc2626', fontWeight: 600 }}>
             {tokensError}
           </div>
         ) : tokens.length === 0 ? (
@@ -437,6 +489,77 @@ export function Settings() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* OpenRouter keys (for you) - provisioned by managers */}
+      <div className="card" style={{ gridColumn: '1 / -1' }}>
+        <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Key size={20} />
+          OpenRouter keys (for you)
+        </h2>
+        <p style={{ color: '#555', fontSize: '15px', marginBottom: '20px' }}>
+          OpenRouter keys provisioned for you by a manager. Use in agents or the VS Code extension for LLM access.
+        </p>
+        {openrouterKeysLoading ? (
+          <p style={{ color: '#666' }}>Loading…</p>
+        ) : openrouterKeysError ? (
+          <p style={{ color: '#dc2626', fontWeight: 600 }}>{openrouterKeysError}</p>
+        ) : openrouterKeys.length === 0 ? (
+          <p style={{ color: '#666' }}>No OpenRouter keys provisioned for you yet. Ask a manager to provision one from your user profile.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {openrouterKeys.map((k) => (
+              <div
+                key={k.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px 0',
+                  borderBottom: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '8px',
+                    background: 'var(--bg-mint)',
+                    border: '1px solid var(--border-default)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Key size={20} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Link
+                    to={`/keys/${k.openrouter_key_hash}`}
+                    style={{ fontSize: '16px', fontWeight: 600, textDecoration: 'none', color: 'inherit' }}
+                  >
+                    {k.name}
+                  </Link>
+                  <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#555' }}>
+                    {k.openrouter_key_hash.slice(0, 12)}…
+                    {k.limit_usd ? ` · $${k.limit_usd} limit` : ''}
+                    {k.limit_reset ? ` · ${k.limit_reset}` : ''}
+                  </p>
+                </div>
+                <span style={{ fontSize: '13px', color: '#666' }}>{new Date(k.created_at).toLocaleDateString()}</span>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => revokeOpenrouterKey(k.openrouter_key_hash)}
+                  style={{ color: '#dc2626' }}
+                >
+                  <Trash2 size={18} />
+                  Revoke
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>

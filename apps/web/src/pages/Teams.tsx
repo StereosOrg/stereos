@@ -121,7 +121,7 @@ export function Teams() {
           style={{
             width: '48px',
             height: '48px',
-            border: '4px solid var(--border-color)',
+            border: '2px solid var(--border-default)',
             borderTopColor: 'var(--bg-mint)',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',

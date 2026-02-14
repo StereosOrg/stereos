@@ -44,40 +44,15 @@ span.set_attribute("tool.output.diff", <diff_blob>)
     - Remove handling in backend service layer
 - Logs may still be used internally for debugging, but not persisted as OTEL events for telemetry.
 
-## 4. Implement Forward Proxy for Completions Telemetry
+## 4. ~~Forward Proxy for Completions~~ (Removed)
 
-- New endpoint:
-
-```sh
-POST https://api.trystereos.com/v1/chat/completions
-```
-
-- Behavior:
-    1. Accept requests with:
-        - Provider API key (OpenAI-compatible)
-        - Your platform Bearer token
-    2. Forward request to configured upstream provider (starting with OpenAI)
-    3. Capture telemetry:
-        - `gen_ai.request`
-        - `gen_ai.tool_call` → diff tool invocations
-        - `gen_ai.tool_result` → diff outputs
-        - `gen_ai.response`
-    4. Emit telemetry to:
-        - `/v1/traces` (spans)
-        - `/v1/metrics` (optional performance/cost metrics)
-
-    - Ensure streaming responses are handled transparently
-
-**Outcome:** Customers retain their provider; your platform observes telemetry in a pass-through proxy.
+The chat completions proxy (`POST /v1/chat/completions`) was removed. Clients send spans directly via OTLP (`POST /v1/traces`). LLM instrumentation is handled by the client (IDE, SDK, etc.).
 
 ## 5. Quick Actions Replacement
 
 - Add a required configuration card in the UI for the user to configure:
-    - OpenAI-compatible provider URL
-    - Provider API key
-    - Any optional model settings
-- This replaces legacy Quick Actions for provider selection
-- Must be set before `/v1/chat/completions` can be used
+    - OTLP endpoint URL (e.g. `https://api.trystereos.com/v1/traces`)
+    - API token for `Authorization: Bearer`
 
 ## 6. Update /events Page to Use Spans
 
@@ -95,16 +70,14 @@ POST https://api.trystereos.com/v1/chat/completions
 
 ## 7. Update API Contract for Authentication
 
-- All endpoints require two headers:
+- OTLP endpoints (`/v1/traces`, `/v1/metrics`) require:
 
 ```sh
 Authorization: Bearer <your_platform_token>
-X-Provider-Key: <customer_provider_api_key>
 ```
 
-- Forward `X-Provider-Key` upstream to OpenAI-compatible provider
 - Validate platform Bearer token internally
-- Return 401 if either is missing or invalid
+- Return 401 if missing or invalid
 
 ## Optional Considerations
 

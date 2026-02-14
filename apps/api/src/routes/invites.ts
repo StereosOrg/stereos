@@ -67,13 +67,13 @@ router.post('/invites', requireAdmin, zValidator('json', inviteCreateSchema), as
     .returning();
 
   // Invite link must point to the frontend (web app), not the API
-  const env = (c.env as any) || {};
-  const frontendUrl = env.FRONTEND_URL || env.TRUSTED_ORIGINS?.split(',')?.[0]?.trim() || 'http://localhost:5173';
+  const env = (c.env ?? process.env) as Record<string, string | undefined>;
+  const frontendUrl = env?.FRONTEND_URL || env?.TRUSTED_ORIGINS?.split(',')?.[0]?.trim() || 'http://localhost:5173';
   const inviteUrl = `${frontendUrl.replace(/\/$/, '')}/auth/accept-invite?token=${encodeURIComponent(token)}`;
   const inviterName = (await db.query.users.findFirst({ where: eq(users.id, adminUser!.id), columns: { name: true } }))?.name || 'A teammate';
 
-  const apiKey = (c.env as any)?.RESEND_API_KEY as string | undefined;
-  const fromEmail = (c.env as any)?.RESEND_FROM_EMAIL || 'hello@ops.trystereos.com';
+  const apiKey = env?.RESEND_API_KEY ?? process.env.RESEND_API_KEY;
+  const fromEmail = env?.RESEND_FROM_EMAIL ?? process.env.RESEND_FROM_EMAIL ?? 'hello@ops.trystereos.com';
   if (!apiKey) {
     console.warn('[Invites] RESEND_API_KEY not set; skipping invite email to', email);
   } else {

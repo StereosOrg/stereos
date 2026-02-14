@@ -66,7 +66,7 @@ export function UsersList() {
           style={{
             width: '48px',
             height: '48px',
-            border: '3px solid var(--border-color)',
+            border: '2px solid var(--border-default)',
             borderTopColor: 'var(--bg-mint)',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',
@@ -85,7 +85,7 @@ export function UsersList() {
         className="card"
         style={{
           background: 'var(--bg-pink)',
-          border: '3px solid #dc2626',
+          border: '1px solid #dc2626',
           padding: '24px',
         }}
       >
@@ -168,7 +168,7 @@ export function UsersList() {
       </div>
 
       {inviteSuccess && (
-        <div className="card" style={{ marginBottom: '24px', background: 'var(--bg-mint)', border: '3px solid var(--border-color)' }}>
+        <div className="card" style={{ marginBottom: '24px', background: 'var(--bg-mint)', border: '2px solid var(--border-default)' }}>
           <p style={{ margin: 0, fontWeight: 600 }}>Invite sent. They’ll receive an email with a link to join the workspace.</p>
         </div>
       )}
@@ -313,7 +313,7 @@ export function UsersList() {
                         height: '44px',
                         borderRadius: '50%',
                         background: user.image ? 'transparent' : 'var(--dark)',
-                        border: '2px solid var(--border-color)',
+                        border: '1px solid var(--border-default)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

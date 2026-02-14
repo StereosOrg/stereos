@@ -13,7 +13,7 @@ export function DiffViewer({ diff }: DiffViewerProps) {
         background: 'var(--bg-white)',
       }}
     >
-      <div style={{ padding: '12px 16px', borderBottom: '2px solid var(--border-color)', background: 'var(--bg-cream)', fontWeight: 700 }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-cream)', fontWeight: 700 }}>
         Diff
       </div>
       <pre

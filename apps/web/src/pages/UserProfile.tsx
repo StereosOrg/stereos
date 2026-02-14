@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon, toolDisplayName } from '../components/ToolIcon';
+import { Key, Plus } from 'lucide-react';
 
 interface UserProfile {
   profile: {
@@ -73,6 +74,19 @@ interface UserProfile {
 export function UserProfile() {
   const { userId } = useParams<{ userId: string }>();
   const [error] = useState<string | null>(null);
+  const [keyName, setKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [createKeyError, setCreateKeyError] = useState('');
+  const [createdKeyRaw, setCreatedKeyRaw] = useState<string | null>(null);
+
+  const { data: meData } = useQuery<{ user: { id: string; role?: string } }>({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Not authenticated');
+      return res.json();
+    },
+  });
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
     queryKey: ['user-profile', userId],
@@ -98,7 +112,7 @@ export function UserProfile() {
           style={{
             width: '48px',
             height: '48px',
-            border: '3px solid var(--border-color)',
+            border: '2px solid var(--border-default)',
             borderTopColor: 'var(--bg-mint)',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',
@@ -117,7 +131,7 @@ export function UserProfile() {
         className="card"
         style={{
           background: 'var(--bg-pink)',
-          border: '3px solid #dc2626',
+          border: '1px solid #dc2626',
           padding: '24px',
         }}
       >
@@ -164,8 +178,8 @@ export function UserProfile() {
               height: '80px',
               borderRadius: '50%',
               background: userData.user.image ? 'transparent' : 'var(--dark)',
-              border: '3px solid var(--border-color)',
-              boxShadow: '4px 4px 0 var(--border-color)',
+              border: '2px solid var(--border-default)',
+              boxShadow: 'var(--shadow-sm)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -224,6 +238,75 @@ export function UserProfile() {
         </div>
       </div>
 
+      {/* Provision OpenRouter key (managers viewing another user) */}
+      {meData?.user && userId && userId !== meData.user.id && (meData.user.role === 'admin' || meData.user.role === 'manager') && userData.customer && (
+        <div className="card" style={{ marginBottom: '24px' }}>
+          <h2 className="heading-3" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Key size={20} />
+            Provision OpenRouter key
+          </h2>
+          <p style={{ color: '#555', fontSize: '15px', marginBottom: '16px' }}>
+            Create an OpenRouter key for this user. They will see it in Settings.
+          </p>
+          {createdKeyRaw && (
+            <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '8px' }}>
+              <p style={{ fontWeight: 600, marginBottom: '8px' }}>Key created — copy and share it with the user. It won't be shown again.</p>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <code style={{ flex: '1 1 200px', wordBreak: 'break-all', fontSize: '13px' }}>{createdKeyRaw}</code>
+                <button type="button" className="btn" onClick={() => { navigator.clipboard.writeText(createdKeyRaw); }}>Copy</button>
+                <button type="button" className="btn" onClick={() => setCreatedKeyRaw(null)}>Dismiss</button>
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              className="input"
+              type="text"
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+              placeholder="Key name (e.g. Cursor, CLI)"
+              disabled={creatingKey}
+              style={{ flex: '1 1 200px', minWidth: '180px' }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={creatingKey || !keyName.trim()}
+              onClick={async () => {
+                if (!keyName.trim() || !userData.customer) return;
+                setCreatingKey(true);
+                setCreateKeyError('');
+                setCreatedKeyRaw(null);
+                try {
+                  const res = await fetch(`${API_BASE}/v1/keys/user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                      name: keyName.trim(),
+                      customer_id: userData.customer.id,
+                      user_id: userId,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || 'Failed to create key');
+                  setCreatedKeyRaw(data.key ?? null);
+                  setKeyName('');
+                } catch (e) {
+                  setCreateKeyError(e instanceof Error ? e.message : 'Failed to create key');
+                } finally {
+                  setCreatingKey(false);
+                }
+              }}
+            >
+              <Plus size={18} />
+              {creatingKey ? 'Creating…' : 'Create key'}
+            </button>
+          </div>
+          {createKeyError && <p style={{ color: '#dc2626', fontWeight: 600, marginTop: '12px' }}>{createKeyError}</p>}
+        </div>
+      )}
+
       {/* Stats Grid */}
       <div
         style={{
@@ -236,14 +319,14 @@ export function UserProfile() {
         <StatCard
           label="Total events"
           value={parseInt(usage.stats.total_events || '0').toLocaleString()}
-          variant="mint"
+          variant="white"
         />
         <StatCard
           label="Active days"
           value={parseInt(usage.stats.active_days || '0').toLocaleString()}
-          variant="lavender"
+          variant="white"
         />
-        <div className="card" style={{ padding: '16px 20px', background: 'var(--bg-cream)', border: '2px solid var(--border-color)' }}>
+        <div className="card" style={{ padding: '16px 20px', background: 'var(--bg-white)' }}>
           <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', opacity: 0.8, marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Favorite tool</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <ToolIcon tool={usage.stats.favorite_tool ?? undefined} size={28} />
@@ -255,7 +338,7 @@ export function UserProfile() {
         <StatCard
           label="Member since"
           value={new Date(userData.user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric', day: 'numeric' })}
-          variant="pink"
+          variant="white"
         />
       </div>
 
@@ -284,8 +367,8 @@ export function UserProfile() {
                   style={{
                     padding: '12px 16px',
                     background: 'var(--bg-mint)',
-                    border: '2px solid var(--border-color)',
-                    borderLeft: '4px solid var(--dark)',
+                    border: '1px solid var(--border-default)',
+                    borderLeft: '3px solid var(--accent-blue)',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
@@ -295,7 +378,7 @@ export function UserProfile() {
                         height: '36px',
                         borderRadius: '6px',
                         background: 'var(--bg-white)',
-                        border: '2px solid var(--border-color)',
+                        border: '1px solid var(--border-default)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -342,117 +425,136 @@ export function UserProfile() {
           </div>
         </div>
 
-        {/* Right column: Monthly Usage + File Activity */}
+        {/* Right column: API Keys (includes OpenRouter monthly usage) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Monthly Usage */}
-          {usage.monthly.length > 0 && (
-            <div className="card">
-              <h2 className="heading-3" style={{ marginBottom: '16px' }}>
-                Monthly usage
-              </h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {usage.monthly.map((month, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      padding: '12px 16px',
-                      background: 'var(--bg-cream)',
-                      border: '2px solid var(--border-color)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontWeight: 600 }}>
-                        {new Date(month.month).toLocaleDateString('en-US', {
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </span>
-                      <span style={{ fontWeight: 600 }}>
-                        ${parseFloat(month.total_cost || '0').toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '13px' }}>
-                      <span className="badge">{parseInt(month.agent_actions || '0')} actions</span>
-                      <span className="badge">{parseInt(month.outcomes || '0')} outcomes</span>
-                    </div>
-                  </div>
-                ))}
+          {/* API Keys (user + team scoped, with OpenRouter usage) */}
+          {userId && (
+            <UserKeysSection userId={userId} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface OpenRouterKeyItem {
+  id: string;
+  openrouter_key_hash: string;
+  name: string;
+  user_id: string | null;
+  team_id: string | null;
+  team_name?: string;
+  limit_usd: string | null;
+  limit_reset: string | null;
+  created_at: string;
+  limit?: number | null;
+  limit_remaining?: number | null;
+  usage_daily?: number;
+  usage_monthly?: number;
+  disabled?: boolean;
+}
+
+function UserKeysSection({ userId }: { userId: string }) {
+  const { data, isLoading, error } = useQuery<{ user_keys: OpenRouterKeyItem[]; team_keys: OpenRouterKeyItem[] }>({
+    queryKey: ['user-keys', userId],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/keys/user/${userId}`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error('Failed to fetch keys');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const userKeys = data?.user_keys ?? [];
+  const teamKeys = data?.team_keys ?? [];
+  const allKeys = [...userKeys, ...teamKeys];
+  const hasKeys = allKeys.length > 0;
+  const totalMonthlyUsage = allKeys.reduce((sum, k) => sum + (k.usage_monthly ?? 0), 0);
+
+  if (isLoading) {
+    return (
+      <div className="card">
+        <h2 className="heading-3" style={{ marginBottom: '16px' }}>API keys</h2>
+        <p style={{ color: '#555' }}>Loading keys…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card">
+        <h2 className="heading-3" style={{ marginBottom: '16px' }}>API keys</h2>
+        <p style={{ color: '#dc2626', fontWeight: 600 }}>Failed to load keys.</p>
+      </div>
+    );
+  }
+
+  const KeyRow = ({ k }: { k: OpenRouterKeyItem }) => (
+    <Link
+      to={`/keys/${k.openrouter_key_hash}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '12px 16px',
+        background: 'var(--bg-white)',
+        border: '1px solid var(--border-default)',
+        borderRadius: '6px',
+        textDecoration: 'none',
+        color: 'inherit',
+      }}
+    >
+      <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Key size={18} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>{k.name}</p>
+        <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#555' }}>
+          {k.openrouter_key_hash.slice(0, 12)}…
+          {k.limit_usd ? ` · $${k.limit_usd} limit` : ''}
+          {k.limit_reset ? ` · ${k.limit_reset}` : ''}
+          {k.team_name ? ` · ${k.team_name}` : ' · User'}
+          {k.usage_monthly != null ? ` · $${k.usage_monthly.toFixed(2)}/mo` : ''}
+        </p>
+      </div>
+      <span style={{ fontSize: '12px', color: '#666' }}>{new Date(k.created_at).toLocaleDateString()}</span>
+    </Link>
+  );
+
+  return (
+    <div className="card">
+      <h2 className="heading-3" style={{ marginBottom: '16px' }}>API keys</h2>
+      {hasKeys && totalMonthlyUsage > 0 && (
+        <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '6px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Monthly usage (OpenRouter)</span>
+          <p style={{ margin: '4px 0 0', fontSize: '20px', fontWeight: 700 }}>${totalMonthlyUsage.toFixed(2)}</p>
+        </div>
+      )}
+      {!hasKeys ? (
+        <p style={{ color: '#555', textAlign: 'center', padding: '24px' }}>No OpenRouter keys for this user yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {userKeys.length > 0 && (
+            <div>
+              <p style={{ fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>User keys</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {userKeys.map((k) => <KeyRow key={k.id} k={k} />)}
               </div>
             </div>
           )}
-
-          {/* Recent Diffs */}
-          <div className="card">
-            <h2 className="heading-3" style={{ marginBottom: '16px' }}>
-              Recent diffs
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {usage.diffs.length === 0 ? (
-                <p style={{ color: '#555', textAlign: 'center', padding: '24px' }}>
-                  No diffs yet
-                </p>
-              ) : (
-                usage.diffs.map((diff, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      padding: '10px 12px',
-                      background: 'var(--bg-mint)',
-                      border: '2px solid var(--border-color)',
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: '4px',
-                        background: 'var(--dark)',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {index + 1}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p
-                        style={{
-                          fontSize: '13px',
-                          fontFamily: 'monospace',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          margin: 0,
-                        }}
-                        title={diff.diff}
-                      >
-                        {diff.diff.split('\n')[0] || 'diff'}
-                      </p>
-                      <p style={{ fontSize: '12px', color: '#666', margin: '4px 0 0' }}>
-                        {diff.vendor} · {new Date(diff.start_time).toLocaleString()}
-                      </p>
-                    </div>
-                    <Link
-                      to={`/diffs/${diff.id}`}
-                      className="btn btn-primary"
-                      style={{ padding: '6px 12px', fontSize: '12px', textDecoration: 'none', flexShrink: 0 }}
-                    >
-                      View diff
-                    </Link>
-                  </div>
-                ))
-              )}
+          {teamKeys.length > 0 && (
+            <div>
+              <p style={{ fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Team keys</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {teamKeys.map((k) => <KeyRow key={k.id} k={k} />)}
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -464,16 +566,18 @@ function StatCard({
 }: {
   label: string;
   value: string;
-  variant: 'mint' | 'lavender' | 'cream' | 'pink';
+  variant: 'mint' | 'lavender' | 'cream' | 'pink' | 'white';
 }) {
   const bg =
-    variant === 'mint'
-      ? 'var(--bg-mint)'
-      : variant === 'lavender'
-        ? 'var(--bg-lavender)'
-        : variant === 'cream'
-          ? 'var(--bg-cream)'
-          : 'var(--bg-pink)';
+    variant === 'white'
+      ? 'var(--bg-white)'
+      : variant === 'mint'
+        ? 'var(--bg-mint)'
+        : variant === 'lavender'
+          ? 'var(--bg-lavender)'
+          : variant === 'cream'
+            ? 'var(--bg-cream)'
+            : 'var(--bg-pink)';
   return (
     <div
       className="card"

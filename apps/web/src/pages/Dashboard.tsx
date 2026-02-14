@@ -41,7 +41,7 @@ export function Dashboard() {
           style={{
             width: '48px',
             height: '48px',
-            border: '4px solid var(--border-color)',
+            border: '2px solid var(--border-default)',
             borderTopColor: 'var(--bg-mint)',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',
@@ -67,21 +67,21 @@ export function Dashboard() {
           title="Total Spans"
           value={stats?.total_spans || 0}
           icon={Activity}
-          color="var(--bg-lavender)"
+          color="var(--bg-white)"
           description="All ingested spans"
         />
         <StatCard
           title="Total Traces"
           value={stats?.total_traces || 0}
           icon={Layers}
-          color="var(--bg-cream)"
+          color="var(--bg-white)"
           description="Distinct traces"
         />
         <StatCard
           title="Most Active User"
           value={stats?.most_active_user?.span_count ?? 0}
           icon={Users}
-          color="var(--bg-pink)"
+          color="var(--bg-white)"
           description={stats?.most_active_user ? `${stats.most_active_user.name || stats.most_active_user.email || 'Unknown'} · 30d` : 'No user activity'}
         />
       </div>
@@ -89,14 +89,14 @@ export function Dashboard() {
       {/* Main Content Area */}
       <div className="grid-2">
         {/* Recent Spans */}
-        <div className="card card-mint" style={{ minHeight: '400px' }}>
+        <div className="card" style={{ minHeight: '400px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
             <div
               style={{
                 width: '40px',
                 height: '40px',
                 background: 'var(--dark)',
-                border: '3px solid var(--border-color)',
+                border: '1px solid var(--border-default)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -111,7 +111,7 @@ export function Dashboard() {
             <div
               style={{
                 background: 'var(--bg-white)',
-                border: '3px solid var(--border-color)',
+                border: '1px solid var(--border-default)',
                 padding: '32px',
                 textAlign: 'center',
               }}
@@ -119,14 +119,14 @@ export function Dashboard() {
               <p style={{ color: '#666', marginBottom: '16px' }}>
                 No spans yet. Start ingesting!
               </p>
-              <Link to="/ingest" className="btn btn-primary" style={{ display: 'inline-flex' }}>
-                View Global Sources
+              <Link to="/settings" className="btn btn-primary" style={{ display: 'inline-flex' }}>
+                Manage API Keys
               </Link>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {stats.recent_spans.map((event) => {
-                const href = event.tool_profile_id ? `/ingest/${event.tool_profile_id}` : '/ingest';
+                const href = `/diffs/${event.id}`;
                 return (
                 <Link
                   key={event.id}
@@ -136,7 +136,7 @@ export function Dashboard() {
                     alignItems: 'center',
                     gap: '16px',
                     padding: '16px 20px',
-                    borderBottom: '2px solid var(--border-color)',
+                    borderBottom: '1px solid var(--border-subtle)',
                     background: 'var(--bg-white)',
                     textDecoration: 'none',
                     color: 'inherit',
@@ -155,7 +155,7 @@ export function Dashboard() {
                       height: '44px',
                       borderRadius: '8px',
                       background: 'var(--bg-mint)',
-                      border: '2px solid var(--border-color)',
+                      border: '1px solid var(--border-default)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -189,12 +189,12 @@ export function Dashboard() {
 
         {/* Quick Actions */}
         <div>
-          <div className="card card-lavender" style={{ marginBottom: '24px' }}>
+          <div className="card" style={{ marginBottom: '24px' }}>
             <h2 className="heading-3">Quick Actions</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <Link to="/ingest" className="btn" style={{ justifyContent: 'flex-start' }}>
+              <Link to="/settings" className="btn" style={{ justifyContent: 'flex-start' }}>
                 <Activity size={18} />
-                Global Sources
+                API Keys
               </Link>
               <Link to="/users" className="btn" style={{ justifyContent: 'flex-start' }}>
                 <Users size={18} />
@@ -203,13 +203,13 @@ export function Dashboard() {
             </div>
           </div>
 
-          <div className="card card-cream">
+          <div className="card">
             <h2 className="heading-3" style={{ marginBottom: '12px' }}>Get data flowing</h2>
             <p style={{ color: '#555', marginBottom: '16px', lineHeight: 1.5 }}>
-              Ingestion is fully span-based now. Connect your tools and start emitting OTLP spans to see activity here.
+              Connect your tools and start emitting OTLP spans to see activity here.
             </p>
-            <Link to="/ingest" className="btn btn-primary" style={{ display: 'inline-flex' }}>
-              View Global Sources
+            <Link to="/settings" className="btn btn-primary" style={{ display: 'inline-flex' }}>
+              Manage API Keys
             </Link>
           </div>
         </div>
@@ -239,11 +239,12 @@ function StatCard({
             width: '48px',
             height: '48px',
             background: 'var(--dark)',
-            border: '3px solid var(--border-color)',
+            border: '1px solid var(--border-default)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '4px 4px 0 var(--border-color)',
+            borderRadius: '8px',
+            boxShadow: 'var(--shadow-sm)',
           }}
         >
           <Icon size={24} color="white" />

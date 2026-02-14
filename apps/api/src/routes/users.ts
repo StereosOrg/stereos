@@ -40,8 +40,18 @@ const requireAuth = async (c: any, next: any) => {
   await next();
 };
 
-// GET /v1/users - List all users (admin only)
-router.get('/users', requireAdmin, async (c) => {
+// GET /v1/users - List all users (admin or manager)
+const requireAdminOrManager = async (c: any, next: any) => {
+  const user = await getCurrentUser(c);
+  const role = (user as { role?: string })?.role;
+  if (!user || (role !== 'admin' && role !== 'manager')) {
+    return c.json({ error: 'Forbidden - Admin or manager access required' }, 403);
+  }
+  c.set('user', user);
+  await next();
+};
+
+router.get('/users', requireAdminOrManager, async (c) => {
   try {
     const db = c.get('db');
     const allUsers = await db
@@ -90,9 +100,8 @@ router.get('/users/:userId/profile', requireAuth, async (c) => {
   const db = c.get('db');
   const currentUser = c.get('user') as { id: string; role?: string } | undefined;
   if (!currentUser) return c.json({ error: 'Unauthorized' }, 401);
-  if (currentUser.role !== 'admin' && currentUser.id !== userId) {
-    return c.json({ error: 'Forbidden - Admin access required' }, 403);
-  }
+  const canView = currentUser.id === userId || currentUser.role === 'admin' || currentUser.role === 'manager';
+  if (!canView) return c.json({ error: 'Forbidden - Access denied' }, 403);
 
   try {
     // Get user details (customer resolved via users.customer_id or ownership)

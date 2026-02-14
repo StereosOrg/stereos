@@ -64,7 +64,7 @@ export function SignIn() {
           <div
             style={{
               background: '#fee2e2',
-              border: '3px solid #dc2626',
+              border: '1px solid #dc2626',
               padding: '12px 16px',
               marginBottom: '20px',
               color: '#dc2626',

@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { VendorIcon } from '../components/ToolIcon';
+import { Key, Plus, Trash2 } from 'lucide-react';
 
 interface TeamProfileResponse {
   team: {
@@ -30,8 +32,24 @@ interface TeamProfileResponse {
   }>;
 }
 
+interface OpenRouterKey {
+  id: string;
+  openrouter_key_hash: string;
+  name: string;
+  customer_id: string;
+  team_id: string | null;
+  limit_usd: string | null;
+  limit_reset: string | null;
+  created_at: string;
+}
+
 export function TeamProfile() {
   const { teamId } = useParams<{ teamId: string }>();
+  const [keyName, setKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [createKeyError, setCreateKeyError] = useState('');
+  const [createdKeyRaw, setCreatedKeyRaw] = useState<string | null>(null);
+
   const { data, isLoading, error } = useQuery<TeamProfileResponse>({
     queryKey: ['team-profile', teamId],
     queryFn: async () => {
@@ -45,6 +63,77 @@ export function TeamProfile() {
     enabled: !!teamId,
   });
 
+  const { data: meData } = useQuery<{ user: { id: string; role?: string } }>({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Not authenticated');
+      return res.json();
+    },
+  });
+
+  const {
+    data: teamKeysData,
+    isLoading: teamKeysLoading,
+    refetch: refetchTeamKeys,
+  } = useQuery<{ keys: OpenRouterKey[] }>({
+    queryKey: ['team-keys', teamId],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/keys/team/${teamId}`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (res.status === 403) throw new Error('FORBIDDEN');
+      if (!res.ok) throw new Error('Failed to fetch team keys');
+      return res.json();
+    },
+    enabled: !!teamId,
+    retry: false,
+  });
+
+  const isTeamMember = !teamKeysData && teamKeysLoading ? null : teamKeysData != null;
+  const isManagerOrAdmin = meData?.user?.role === 'admin' || meData?.user?.role === 'manager';
+
+  const createTeamKey = async () => {
+    if (!teamId || !keyName.trim()) return;
+    setCreatingKey(true);
+    setCreateKeyError('');
+    setCreatedKeyRaw(null);
+    try {
+      const res = await fetch(`${API_BASE}/v1/keys/team/${teamId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        credentials: 'include',
+        body: JSON.stringify({ name: keyName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create key');
+      setCreatedKeyRaw(data.key ?? null);
+      setKeyName('');
+      refetchTeamKeys();
+    } catch (e) {
+      setCreateKeyError(e instanceof Error ? e.message : 'Failed to create key');
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const revokeTeamKey = async (hash: string) => {
+    if (!confirm('Revoke this OpenRouter key? It will stop working immediately.')) return;
+    try {
+      const res = await fetch(`${API_BASE}/v1/keys/team/${teamId}/${encodeURIComponent(hash)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to revoke key');
+      refetchTeamKeys();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to revoke key');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '48px' }}>
@@ -52,7 +141,7 @@ export function TeamProfile() {
           style={{
             width: '48px',
             height: '48px',
-            border: '3px solid var(--border-color)',
+            border: '1px solid var(--border-default)',
             borderTopColor: 'var(--bg-mint)',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',
@@ -67,7 +156,7 @@ export function TeamProfile() {
 
   if (error || !data) {
     return (
-      <div className="card" style={{ padding: '24px', background: 'var(--bg-pink)', border: '3px solid #dc2626' }}>
+      <div className="card" style={{ padding: '24px', background: 'var(--bg-pink)', border: '1px solid #dc2626' }}>
         <h2 className="heading-3" style={{ marginBottom: '8px', color: '#991b1b' }}>Error</h2>
         <p style={{ color: '#555' }}>Unable to load team profile.</p>
       </div>
@@ -90,7 +179,7 @@ export function TeamProfile() {
               height: '64px',
               borderRadius: '12px',
               background: 'var(--bg-cream)',
-              border: '3px solid var(--border-color)',
+              border: '1px solid var(--border-default)',
               overflow: 'hidden',
               display: 'flex',
               alignItems: 'center',
@@ -149,7 +238,7 @@ export function TeamProfile() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {data.recent_diffs.map((d) => (
-                <div key={d.id} style={{ padding: '10px 12px', background: 'var(--bg-mint)', border: '2px solid var(--border-color)' }}>
+                <div key={d.id} style={{ padding: '10px 12px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)' }}>
                   <div style={{ fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {d.diff.split('\\n')[0] || 'diff'}
                   </div>
@@ -171,7 +260,7 @@ export function TeamProfile() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {recent_spans.map((s) => (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'var(--bg-mint)', border: '2px solid var(--border-color)' }}>
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)' }}>
                 <VendorIcon vendor={s.vendor} displayName={s.vendor} size={28} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600 }}>{s.intent}</div>
@@ -183,6 +272,89 @@ export function TeamProfile() {
           </div>
         )}
       </div>
+
+      {isTeamMember && (
+        <div className="card" style={{ marginTop: '24px' }}>
+          <h2 className="heading-3" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Key size={20} />
+            Team OpenRouter keys
+          </h2>
+          <p style={{ color: '#555', fontSize: '15px', marginBottom: '16px' }}>
+            OpenRouter keys for this team. Use in agents or the VS Code extension for LLM access.
+          </p>
+          {createdKeyRaw && (
+            <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '8px' }}>
+              <p style={{ fontWeight: 600, marginBottom: '8px' }}>Key created — copy it now. You won't see it again.</p>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <code style={{ flex: '1 1 200px', wordBreak: 'break-all', fontSize: '13px' }}>{createdKeyRaw}</code>
+                <button type="button" className="btn" onClick={() => { navigator.clipboard.writeText(createdKeyRaw); }}>Copy</button>
+                <button type="button" className="btn" onClick={() => setCreatedKeyRaw(null)}>Dismiss</button>
+              </div>
+            </div>
+          )}
+          {isManagerOrAdmin && (
+            <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                className="input"
+                type="text"
+                value={keyName}
+                onChange={(e) => setKeyName(e.target.value)}
+                placeholder="Key name (e.g. Production)"
+                disabled={creatingKey}
+                style={{ flex: '1 1 200px', minWidth: '180px' }}
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={createTeamKey}
+                disabled={creatingKey || !keyName.trim()}
+              >
+                <Plus size={18} />
+                {creatingKey ? 'Creating…' : 'Create key'}
+              </button>
+            </div>
+          )}
+          {createKeyError && <p style={{ color: '#dc2626', fontWeight: 600, marginBottom: '12px' }}>{createKeyError}</p>}
+          {teamKeysLoading ? (
+            <p style={{ color: '#666' }}>Loading keys…</p>
+          ) : !teamKeysData?.keys?.length ? (
+            <p style={{ color: '#666' }}>No team keys yet.{isManagerOrAdmin ? ' Create one above.' : ''}</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {teamKeysData.keys.map((k) => (
+                <div
+                  key={k.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '16px 0',
+                    borderBottom: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Key size={20} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{k.name}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#555' }}>
+                      {k.openrouter_key_hash.slice(0, 12)}…
+                      {k.limit_usd ? ` · $${k.limit_usd} limit` : ''}
+                      {k.limit_reset ? ` · ${k.limit_reset}` : ''}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: '13px', color: '#666' }}>{new Date(k.created_at).toLocaleDateString()}</span>
+                  {isManagerOrAdmin && (
+                    <button type="button" className="btn" onClick={() => revokeTeamKey(k.openrouter_key_hash)} style={{ color: '#dc2626' }}>
+                      <Trash2 size={18} /> Revoke
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

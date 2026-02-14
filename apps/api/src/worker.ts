@@ -8,8 +8,8 @@ import type { AppVariables } from './types/app.js';
 import type { AuthType } from './lib/auth.js';
 import type { Database } from '@stereos/shared/db';
 import authRouter from './routes/auth.js';
-import chatCompletionsRouter from './routes/chat-completions.js';
 import billingRouter from './routes/billing.js';
+import openrouterRouter from './routes/openrouter.js';
 import usersRouter from './routes/users.js';
 import onboardingRouter from './routes/onboarding.js';
 import invitesRouter from './routes/invites.js';
@@ -38,6 +38,8 @@ type Env = {
   GITHUB_CLIENT_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  OPENROUTER_MANAGEMENT_KEY?: string;
+  OPENROUTER_BROADCAST_SECRET?: string;
 };
 
 function normalizeOrigin(o: string): string {
@@ -165,8 +167,8 @@ app.get('/health', (c) =>
 );
 
 app.route('/v1', authRouter);
-app.route('/v1', chatCompletionsRouter);
 app.route('/v1', billingRouter);
+app.route('/v1/openrouter', openrouterRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);

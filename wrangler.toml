@@ -19,6 +19,7 @@ FRONTEND_URL = "https://app.trystereos.com"
 # - STRIPE_SECRET_KEY
 # - STRIPE_PRICE_ID
 # - STRIPE_WEBHOOK_SECRET
+# - OPENROUTER_BROADCAST_SECRET (required for /v1/traces; must match OpenRouter Broadcast headers)
 # - RESEND_API_KEY (optional; for verification emails in Worker)
 # - RESEND_FROM_EMAIL (optional; default )
 

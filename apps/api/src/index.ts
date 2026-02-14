@@ -13,8 +13,8 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { serve } from '@hono/node-server';
 import authRouter from './routes/auth.js';
-import chatCompletionsRouter from './routes/chat-completions.js';
 import billingRouter from './routes/billing.js';
+import openrouterRouter from './routes/openrouter.js';
 import usersRouter from './routes/users.js';
 import onboardingRouter from './routes/onboarding.js';
 import invitesRouter from './routes/invites.js';
@@ -39,14 +39,18 @@ app.use('*', cors({
 app.use('*', async (c, next) => {
   c.set('db', db);
   c.set('auth', auth);
+  // Node: inject process.env into context so routes using c.env get env vars (Workers pass env via bindings)
+  if (!(c as { env?: unknown }).env) {
+    (c as { env: NodeJS.ProcessEnv }).env = process.env;
+  }
   await next();
 });
 
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 app.route('/v1', authRouter);
-app.route('/v1', chatCompletionsRouter);
 app.route('/v1', billingRouter);
+app.route('/v1/openrouter', openrouterRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);
@@ -61,8 +65,8 @@ app.onError((err, c) => {
   return c.json({ error: 'Internal Server Error' }, 500);
 });
 
-// Start server when run directly (Node dev); Workers use worker.ts
-if (typeof process !== 'undefined') {
+// Start server when run directly (Node dev); Workers use worker.ts. Skip when running tests.
+if (typeof process !== 'undefined' && process.env.VITEST !== 'true') {
   const port = parseInt(process.env.PORT || '3000', 10);
   console.log(`🚀 STEREOS API on http://localhost:${port}`);
   serve({

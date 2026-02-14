@@ -56,6 +56,26 @@ npm run dev
 
 The API will be available at `http://localhost:3000` and the web UI at `http://localhost:5173`.
 
+### Testing
+
+```bash
+# Run all tests (requires npm install)
+npm run test
+```
+
+Tests include:
+- **Unit tests**: `vendor-map` (canonicalizeVendor, flattenOtelAttributes, isLLMTool)
+- **API tests**: Health, 404, onboarding status, auth-protected routes (401), traces endpoint
+
+### OpenAPI Schema
+
+The API is documented with OpenAPI 3.1 at `openapi.yaml`. Use it with Swagger UI, Redoc, or code generators.
+
+```bash
+# Validate schema (with openapi-generator or swagger-cli)
+npx @redocly/cli lint openapi.yaml
+```
+
 ## API Usage
 
 ### Authentication
@@ -82,34 +102,42 @@ Copy the `token` value from the response (it starts with `sk_`). Use it as `Auth
 
 **Important:** For curl line continuation, there must be **no space** after the backslash. Or use a one‑liner.
 
-### Ingesting Spans (OTLP JSON)
+### Trace Ingestion (OpenRouter Broadcast)
 
-Send OTLP JSON to `/v1/traces`.
+Spans are received via **OpenRouter Broadcast**. Clients use Stereos-provisioned OpenRouter keys and pass `user` (Stereos user ID) in the request body. OpenRouter sends traces to Stereos with Privacy Mode (no prompts/completions).
+
+**1. Provision OpenRouter key** (admin/manager only):
 
 ```bash
-curl -X POST http://localhost:3000/v1/traces \
+curl -X POST http://localhost:3000/v1/keys \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"my-app"}}]},"scopeSpans":[{"spans":[{"traceId":"abc","spanId":"def","name":"gen_ai.request","kind":3,"startTimeUnixNano":"1710000000000000000","endTimeUnixNano":"1710000000500000000","attributes":[{"key":"gen_ai.request.model","value":{"stringValue":"gpt-5"}}]}]}]}]}'
+  -d '{"name":"Team Key","customer_id":"YOUR_CUSTOMER_ID","user_id":"USER_ID","limit":100,"limit_reset":"monthly"}'
 ```
 
-Stereos will extract:
-- `user_id` from the API token
-- `team_id` from the team‑scoped token
-- `tool.output.diff` (when present) for diff drilldowns
+Copy the `key` from the response. Use it with OpenRouter.
 
-### Chat Completions (Proxy)
+**2. Configure OpenRouter Broadcast**
 
-The chat proxy writes GenAI spans automatically. Example:
+In [OpenRouter Settings > Observability](https://openrouter.ai/settings/observability), enable Broadcast and add OpenTelemetry Collector:
+- **Endpoint:** `https://api.trystereos.com/v1/traces`
+- **Headers:** `{ "Authorization": "Bearer <OPENROUTER_BROADCAST_SECRET>" }`
+- **Privacy Mode:** enabled (excludes prompt/completion; keeps token usage, cost, timing)
 
-```bash
-curl -X POST http://localhost:3000/v1/chat/completions \
-  -H 'Authorization: Bearer YOUR_API_TOKEN' \
-  -H 'X-Provider: openrouter' \
-  -H 'X-Provider-Key: YOUR_PROVIDER_KEY' \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"openai/gpt-5","messages":[{"role":"user","content":"Hello"}]}'
+**3. Client usage**
+
+When calling OpenRouter, pass `user: "<stereos_user_id>"` in the request body so Stereos can attribute usage. Optionally pass `team_id` via trace metadata for team-level dashboards:
+
+```json
+{
+  "model": "openai/gpt-4o",
+  "messages": [...],
+  "user": "<stereos_user_id>",
+  "trace": { "metadata": { "team_id": "<stereos_team_id>" } }
+}
 ```
+
+If `team_id` is omitted, Stereos derives it from the user's team membership when possible.
 
 ### User Management (Admin Only)
 

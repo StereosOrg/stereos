@@ -1,8 +1,37 @@
 import { Hono } from 'hono';
-import { getStripe, handleStripeWebhook } from '../lib/stripe.js';
+import { eq } from 'drizzle-orm';
+import { customers } from '@stereos/shared/schema';
+import { getStripe, handleStripeWebhook, createBillingPortalSession } from '../lib/stripe.js';
+import { requireAuth, getCustomerForUser, getFrontendBaseUrl } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
+
+// POST /v1/billing/portal - Create Stripe Billing Portal session (redirect to manage subscription)
+router.post('/billing/portal', requireAuth as (c: unknown, next: () => Promise<void>) => Promise<void>, async (c) => {
+  const user = c.get('user')!;
+  const customer = await getCustomerForUser(c as unknown as import('../types/context.js').HonoContext, user.id);
+  if (!customer) {
+    return c.json({ error: 'Customer not found' }, 404);
+  }
+  const db = c.get('db');
+  const row = await db.query.customers.findFirst({
+    where: eq(customers.id, customer.id),
+    columns: { customer_stripe_id: true },
+  });
+  const stripeCustomerId = row?.customer_stripe_id ?? null;
+  if (!stripeCustomerId || stripeCustomerId.startsWith('mock_')) {
+    return c.json({ error: 'No Stripe customer. Add payment method first.' }, 400);
+  }
+  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+  const baseUrl = getFrontendBaseUrl(c as unknown as import('../types/context.js').HonoContext);
+  const returnUrl = `${baseUrl}/billing`;
+  const result = await createBillingPortalSession(stripeCustomerId, returnUrl, stripeKey);
+  if (!result) {
+    return c.json({ error: 'Failed to create billing portal session' }, 500);
+  }
+  return c.json(result);
+});
 
 // Stripe webhook handler (uses c.env in Workers; process.env in Node)
 router.post('/webhooks/stripe', async (c) => {

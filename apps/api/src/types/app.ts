@@ -6,7 +6,6 @@ export type AppVariables = {
   db: Database;
   auth: AuthType;
   apiToken?: unknown;
-  providerKey?: string;
   user?: User;
   customer?: Customer;
   session?: { user: { id: string; email?: string; name?: string; image?: string }; [k: string]: unknown };

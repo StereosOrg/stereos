@@ -15,7 +15,7 @@ export function VerifyEmail() {
             height: '56px',
             borderRadius: '12px',
             background: 'var(--bg-mint)',
-            border: '3px solid var(--border-color)',
+            border: '1px solid var(--border-default)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

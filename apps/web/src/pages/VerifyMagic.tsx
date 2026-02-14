@@ -73,7 +73,7 @@ export function VerifyMagic() {
           style={{
             width: '40px',
             height: '40px',
-            border: '3px solid var(--border-color)',
+            border: '2px solid var(--border-default)',
             borderTopColor: 'var(--dark)',
             borderRadius: '50%',
             animation: 'spin 0.8s linear infinite',

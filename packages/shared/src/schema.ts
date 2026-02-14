@@ -216,6 +216,27 @@ export const telemetrySpans = pgTable('TelemetrySpan', {
   userIdx: index('TelemetrySpan_user_id_idx').on(t.user_id),
 }));
 
+// ── OpenRouter (provisioned keys for LLM access) ───────────────────────────
+
+export const openrouterKeyLimitResetEnum = pgEnum('openrouter_key_limit_reset', ['daily', 'weekly', 'monthly']);
+
+export const openrouterKeys = pgTable('OpenRouterKey', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  team_id: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
+  openrouter_key_hash: text('openrouter_key_hash').notNull().unique(),
+  name: text('name').notNull(),
+  limit_usd: decimal('limit_usd', { precision: 10, scale: 4 }),
+  limit_reset: openrouterKeyLimitResetEnum('limit_reset'),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  created_by_user_id: text('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+}, (t) => ({
+  customerIdx: index('OpenRouterKey_customer_id_idx').on(t.customer_id),
+  userIdx: index('OpenRouterKey_user_id_idx').on(t.user_id),
+  teamIdx: index('OpenRouterKey_team_id_idx').on(t.team_id),
+}));
+
 export const telemetryMetrics = pgTable('TelemetryMetric', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
@@ -283,6 +304,13 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
   invites: many(invites),
   toolProfiles: many(toolProfiles),
   telemetrySpans: many(telemetrySpans),
+  openrouterKeys: many(openrouterKeys),
+}));
+
+export const openrouterKeysRelations = relations(openrouterKeys, ({ one }) => ({
+  customer: one(customers, { fields: [openrouterKeys.customer_id], references: [customers.id] }),
+  user: one(users, { fields: [openrouterKeys.user_id], references: [users.id] }),
+  team: one(teams, { fields: [openrouterKeys.team_id], references: [teams.id] }),
 }));
 
 export const invitesRelations = relations(invites, ({ one }) => ({
@@ -311,3 +339,4 @@ export type Customer = typeof customers.$inferSelect;
 export type ToolProfile = typeof toolProfiles.$inferSelect;
 export type TelemetrySpan = typeof telemetrySpans.$inferSelect;
 export type TelemetryMetric = typeof telemetryMetrics.$inferSelect;
+export type OpenRouterKey = typeof openrouterKeys.$inferSelect;

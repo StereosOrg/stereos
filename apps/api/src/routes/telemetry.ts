@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { toolProfiles, telemetrySpans, telemetryMetrics, users } from '@stereos/shared/schema';
+import { toolProfiles, telemetrySpans, telemetryMetrics, users, customers, teamMembers, teams } from '@stereos/shared/schema';
 import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import { getCurrentUser } from '../lib/middleware.js';
@@ -7,26 +7,86 @@ import type { ApiTokenPayload } from '../lib/api-token.js';
 import { canonicalizeVendor, flattenOtelAttributes } from '../lib/vendor-map.js';
 import { trackTelemetryEventsUsage, trackToolProfilesUsage } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
+import type { Database } from '@stereos/shared/db';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
-// ── Pre-flight for Cloudflare Observability Destinations ─────────────────
-// Cloudflare probes the endpoint with GET/HEAD/OPTIONS before saving; OTLP is POST-only.
-// Returning 200 for these methods allows the destination to be created.
-// Use router.on() so HEAD/OPTIONS work in Workers (router.head may be missing in bundle).
+/** Resolve customer_id for a Stereos user_id. OpenRouter sends user.id in span attributes when client passes user in request. */
+async function resolveCustomerForUserId(db: Database, userId: string): Promise<string | null> {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { customer_id: true },
+  });
+  if (user?.customer_id) return user.customer_id;
+  const owner = await db.query.customers.findFirst({
+    where: eq(customers.user_id, userId),
+    columns: { id: true },
+  });
+  return owner?.id ?? null;
+}
 
+/** Resolve team_id from trace attributes or user's team membership. Validates that team belongs to customer and user is a member. */
+async function resolveTeamId(
+  db: Database,
+  customerId: string,
+  userId: string,
+  traceTeamId: string | null
+): Promise<string | null> {
+  if (traceTeamId?.trim()) {
+    const team = await db.query.teams.findFirst({
+      where: and(eq(teams.id, traceTeamId), eq(teams.customer_id, customerId)),
+      columns: { id: true },
+    });
+    if (team) {
+      const member = await db.query.teamMembers.findFirst({
+        where: and(eq(teamMembers.team_id, team.id), eq(teamMembers.user_id, userId)),
+        columns: { team_id: true },
+      });
+      if (member) return team.id;
+    }
+  }
+  const membership = await db.query.teamMembers.findFirst({
+    where: eq(teamMembers.user_id, userId),
+    columns: { team_id: true },
+  });
+  if (membership) {
+    const team = await db.query.teams.findFirst({
+      where: and(eq(teams.id, membership.team_id), eq(teams.customer_id, customerId)),
+      columns: { id: true },
+    });
+    if (team) return team.id;
+  }
+  return null;
+}
+
+/** Middleware: require OpenRouter Broadcast secret (Authorization: Bearer OPENROUTER_BROADCAST_SECRET). */
+async function openRouterBroadcastAuth(c: any, next: any) {
+  const secret = (c.env ?? process.env)?.OPENROUTER_BROADCAST_SECRET;
+  if (!secret) {
+    return c.json({ error: 'OpenRouter Broadcast not configured' }, 503);
+  }
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized - Missing Bearer token' }, 401);
+  }
+  const token = authHeader.substring(7).trim();
+  if (token !== secret) {
+    return c.json({ error: 'Unauthorized - Invalid token' }, 401);
+  }
+  return next();
+}
+
+// ── Pre-flight for OpenRouter Broadcast / OTLP ───────────────────────────
 router.on(['HEAD', 'OPTIONS'], '/traces', (c) => c.body(null, 200));
-router.on(['HEAD', 'OPTIONS'], '/metrics', (c) => c.body(null, 200));
 
-// ── OTLP Ingestion: Traces ──────────────────────────────────────────────
+// ── OTLP Ingestion: Traces (OpenRouter Broadcast only) ───────────────────
+// Configure OpenRouter Settings > Observability > OpenTelemetry Collector:
+// Endpoint: https://api.trystereos.com/v1/traces
+// Headers: { "Authorization": "Bearer <OPENROUTER_BROADCAST_SECRET>" }
+// Enable Privacy Mode to exclude prompt/completion; span attributes include user.id when client passes user in request.
 
-router.post('/traces', authMiddleware, async (c) => {
-  const apiToken = c.get('apiToken') as ApiTokenPayload;
+router.post('/traces', openRouterBroadcastAuth, async (c) => {
   const db = c.get('db');
-
-  const customerId = apiToken.customer.id;
-  const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
-  const teamId = apiToken.team_id ?? null;
 
   let body: any;
   try {
@@ -40,6 +100,55 @@ router.post('/traces', authMiddleware, async (c) => {
     return c.json({ error: 'Missing resourceSpans array' }, 400);
   }
 
+  // Extract user.id and team.id from spans or resource attributes; resolve to customer and team
+  // OpenRouter maps request "user" to user.id; pass team_id in trace.metadata for team attribution
+  const USER_ATTR_KEYS = ['user.id', 'user_id', 'trace.metadata.user.id', 'trace.metadata.user_id'];
+  const TEAM_ATTR_KEYS = ['team.id', 'team_id', 'trace.metadata.team.id', 'trace.metadata.team_id'];
+  function extractUserId(attrs: Record<string, string>): string | null {
+    for (const k of USER_ATTR_KEYS) {
+      const v = attrs[k]?.trim();
+      if (v) return v;
+    }
+    return null;
+  }
+  function extractTeamId(attrs: Record<string, string>): string | null {
+    for (const k of TEAM_ATTR_KEYS) {
+      const v = attrs[k]?.trim();
+      if (v) return v;
+    }
+    return null;
+  }
+
+  let customerId: string | null = null;
+  let userId: string | null = null;
+  let traceTeamId: string | null = null;
+  for (const rs of resourceSpans) {
+    const resourceAttrs = flattenOtelAttributes(rs.resource?.attributes);
+    userId = extractUserId(resourceAttrs);
+    traceTeamId = traceTeamId ?? extractTeamId(resourceAttrs);
+    if (!userId) {
+      for (const ss of rs.scopeSpans || []) {
+        for (const span of ss.spans || []) {
+          const spanAttrs = flattenOtelAttributes(span.attributes);
+          userId = userId ?? extractUserId(spanAttrs);
+          traceTeamId = traceTeamId ?? extractTeamId(spanAttrs);
+          if (userId) break;
+        }
+        if (userId) break;
+      }
+    }
+    if (userId) {
+      customerId = await resolveCustomerForUserId(db, userId);
+      if (customerId) break;
+    }
+  }
+  if (!customerId || !userId) {
+    return c.json({
+      error: 'Unable to attribute traces - OpenRouter requests must include user (Stereos user_id) in request body',
+    }, 400);
+  }
+
+  const teamId = await resolveTeamId(db, customerId, userId, traceTeamId);
 
   const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
   const existingVendors = new Set(
@@ -68,7 +177,7 @@ router.post('/traces', authMiddleware, async (c) => {
       for (const span of spans) {
         spanCount++;
         const spanAttrs = flattenOtelAttributes(span.attributes);
-        if (userId) spanAttrs['user.id'] = userId;
+        spanAttrs['user.id'] = userId;
         if (teamId) spanAttrs['team.id'] = teamId;
         const startNano = span.startTimeUnixNano ? BigInt(span.startTimeUnixNano) : BigInt(0);
         const endNano = span.endTimeUnixNano ? BigInt(span.endTimeUnixNano) : BigInt(0);
@@ -157,161 +266,6 @@ router.post('/traces', authMiddleware, async (c) => {
   }
 
   return c.json({ partialSuccess: { rejectedSpans: 0, acceptedSpans: totalInserted } });
-});
-
-// ── OTLP Ingestion: Metrics (OTLP JSON) ─────────────────────────────────
-
-router.post('/metrics', authMiddleware, async (c) => {
-  const apiToken = c.get('apiToken') as ApiTokenPayload;
-  const db = c.get('db');
-
-  const customerId = apiToken.customer.id;
-  const userId = apiToken.user_id ?? apiToken.customer?.user_id ?? null;
-  const teamId = apiToken.team_id ?? null;
-
-  let body: any;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400);
-  }
-
-  const resourceMetrics = body?.resourceMetrics;
-  if (!Array.isArray(resourceMetrics)) {
-    return c.json({ error: 'Missing resourceMetrics array' }, 400);
-  }
-
-  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
-  const existingVendorsMetrics = new Set(
-    (await db.select({ vendor: toolProfiles.vendor }).from(toolProfiles).where(eq(toolProfiles.customer_id, customerId))).map((r) => r.vendor)
-  );
-
-  let totalInserted = 0;
-
-  for (const rm of resourceMetrics) {
-    const resourceAttrs = flattenOtelAttributes(rm.resource?.attributes);
-    const vendor = canonicalizeVendor(resourceAttrs);
-    const serviceName = resourceAttrs['service.name'] || null;
-
-    const now = new Date();
-    const [profile] = await db
-      .insert(toolProfiles)
-      .values({
-        customer_id: customerId,
-        vendor: vendor.slug,
-        display_name: vendor.displayName,
-        vendor_category: vendor.category,
-        first_seen_at: now,
-        last_seen_at: now,
-      })
-      .onConflictDoUpdate({
-        target: [toolProfiles.customer_id, toolProfiles.vendor],
-        set: {
-          display_name: vendor.displayName,
-          vendor_category: vendor.category,
-          last_seen_at: now,
-          updated_at: now,
-        },
-      })
-      .returning({ id: toolProfiles.id });
-
-    if (!existingVendorsMetrics.has(vendor.slug)) {
-      existingVendorsMetrics.add(vendor.slug);
-      await trackToolProfilesUsage(db, customerId, 1, { tool_profile_id: profile.id }, stripeKey);
-    }
-
-    const scopeMetrics = rm.scopeMetrics || [];
-    const metricRows: Array<typeof telemetryMetrics.$inferInsert> = [];
-
-    for (const sm of scopeMetrics) {
-      const metrics = sm.metrics || [];
-      for (const metric of metrics) {
-        const metricName = metric.name || 'unknown';
-        const unit = metric.unit || null;
-        const description = metric.description || null;
-
-        const num = (v: unknown): number | null => {
-          if (v === undefined || v === null) return null;
-          const n = Number(v);
-          return Number.isFinite(n) ? n : null;
-        };
-        const pushRow = (dp: any, metricType: string, extras: Partial<typeof telemetryMetrics.$inferInsert> = {}) => {
-          const attrs = flattenOtelAttributes(dp.attributes);
-          const timeNano = dp.timeUnixNano ? BigInt(dp.timeUnixNano) : BigInt(Date.now() * 1_000_000);
-          const startNano = dp.startTimeUnixNano ? BigInt(dp.startTimeUnixNano) : null;
-          const time = new Date(Number(timeNano / BigInt(1_000_000)));
-          const startTime = startNano ? new Date(Number(startNano / BigInt(1_000_000))) : null;
-
-          metricRows.push({
-            customer_id: customerId,
-            user_id: userId,
-            team_id: teamId,
-            tool_profile_id: profile.id,
-            vendor: vendor.slug,
-            service_name: serviceName,
-            metric_name: metricName,
-            metric_type: metricType,
-            unit,
-            description,
-            attributes: attrs,
-            start_time: startTime,
-            time,
-            data_point: dp,
-            ...extras,
-          });
-        };
-
-        if (metric.sum?.dataPoints) {
-          for (const dp of metric.sum.dataPoints) {
-            pushRow(dp, 'sum', {
-              value_double: num(dp.asDouble),
-              value_int: num(dp.asInt) as number | null,
-            });
-          }
-        } else if (metric.gauge?.dataPoints) {
-          for (const dp of metric.gauge.dataPoints) {
-            pushRow(dp, 'gauge', {
-              value_double: num(dp.asDouble),
-              value_int: num(dp.asInt) as number | null,
-            });
-          }
-        } else if (metric.histogram?.dataPoints) {
-          for (const dp of metric.histogram.dataPoints) {
-            pushRow(dp, 'histogram', {
-              count: num(dp.count) as number | null,
-              sum: num(dp.sum),
-              min: num(dp.min),
-              max: num(dp.max),
-              bucket_counts: dp.bucketCounts ?? null,
-              explicit_bounds: dp.explicitBounds ?? null,
-            });
-          }
-        } else if (metric.exponentialHistogram?.dataPoints) {
-          for (const dp of metric.exponentialHistogram.dataPoints) {
-            pushRow(dp, 'exponential_histogram', {
-              count: num(dp.count) as number | null,
-              sum: num(dp.sum),
-            });
-          }
-        } else if (metric.summary?.dataPoints) {
-          for (const dp of metric.summary.dataPoints) {
-            pushRow(dp, 'summary', {
-              count: num(dp.count) as number | null,
-              sum: num(dp.sum),
-              quantile_values: dp.quantileValues ?? null,
-            });
-          }
-        }
-      }
-    }
-
-    if (metricRows.length > 0) {
-      await db.insert(telemetryMetrics).values(metricRows);
-      totalInserted += metricRows.length;
-    }
-  }
-
-  return c.json({ partialSuccess: { rejectedDataPoints: 0, acceptedDataPoints: totalInserted } });
 });
 
 // ── Read: Tool Profiles ─────────────────────────────────────────────────

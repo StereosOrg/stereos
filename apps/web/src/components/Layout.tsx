@@ -2,7 +2,9 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Home,
-  Funnel,
+  CreditCard,
+  Key,
+  Shield,
   Users,
   UsersRound,
   Settings,
@@ -25,14 +27,16 @@ export function Layout() {
     enabled: hasToken,
   });
   const profileUser = (session?.user && (session.user as { role?: string }).role) ? session.user : me?.user ?? session?.user;
-  const isAdmin = !!profileUser && 'role' in profileUser && profileUser.role === 'admin';
+  const isAdminOrManager = !!profileUser && 'role' in profileUser && (profileUser.role === 'admin' || profileUser.role === 'manager');
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
-    { path: '/ingest', label: 'Ingestion', icon: Funnel },
-    ...(isAdmin ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
+    ...(isAdminOrManager ? [{ path: '/keys', label: 'Keys', icon: Key }] : []),
+    ...(isAdminOrManager ? [{ path: '/guardrails', label: 'Guardrails', icon: Shield }] : []),
+    ...(isAdminOrManager ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
+    { path: '/billing', label: 'Billing', icon: CreditCard },
   ];
 
   return (
@@ -54,11 +58,12 @@ export function Layout() {
               style={{
                 width: '40px',
                 height: '40px',
-                border: '3px solid var(--border-color)',
+                border: '1px solid var(--border-default)',
+                borderRadius: '8px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '4px 4px 0 var(--border-color)',
+                boxShadow: 'var(--shadow-sm)',
                 overflow: 'hidden',
               }}
             >
@@ -113,7 +118,7 @@ export function Layout() {
                 marginRight: -24,
                 marginBottom: -32,
                 width: 'calc(100% + 48px)',
-                borderTop: '3px solid var(--border-color)',
+                borderTop: '1px solid var(--border-subtle)',
                 background: 'var(--bg-cream)',
               }}
             >
@@ -168,21 +173,19 @@ export function Layout() {
               gap: '12px',
               padding: '12px 18px',
               background: 'var(--bg-white)',
-              border: '2px solid var(--border-color)',
-              borderRadius: '16px',
-              boxShadow: '4px 4px 0 var(--border-color)',
+              border: '1px solid var(--border-default)',
+              borderRadius: '12px',
+              boxShadow: 'var(--shadow-md)',
               textDecoration: 'none',
               color: 'var(--dark)',
               zIndex: 50,
-              transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+              transition: 'box-shadow 0.15s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translate(-2px, -2px)';
-              e.currentTarget.style.boxShadow = '6px 6px 0 var(--border-color)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translate(0, 0)';
-              e.currentTarget.style.boxShadow = '4px 4px 0 var(--border-color)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
             }}
           >
             <div
@@ -191,7 +194,7 @@ export function Layout() {
                 height: '36px',
                 borderRadius: '50%',
                 background: 'var(--dark)',
-                border: '2px solid var(--border-color)',
+                border: '1px solid var(--border-default)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

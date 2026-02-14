@@ -117,6 +117,16 @@ const VENDOR_REGISTRY: VendorDefinition[] = [
       return svc.includes('kilo') || sdk.includes('kilo');
     },
   },
+  {
+    slug: 'openrouter',
+    displayName: 'OpenRouter',
+    category: 'llm',
+    matcher: (attrs) => {
+      const genAiSystem = (attrs['gen_ai.system'] || '').toLowerCase();
+      const svc = (attrs['service.name'] || '').toLowerCase();
+      return genAiSystem === 'openrouter' || svc.includes('openrouter');
+    },
+  },
 ];
 
 function slugify(name: string): string {
