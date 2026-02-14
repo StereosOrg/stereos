@@ -19,9 +19,13 @@ export const TOOL_PROFILES_UNIT_PRICE = 75;
 /** Flat monthly: $450/mo (recurring line item) */
 export const PRICE_ID_FLAT_MONTHLY = 'price_1SzCv0FRJliLrxglgIuO5cdX';
 
+/** Managed keys: metered, per OpenRouter key created in portal */
+export const PRICE_ID_MANAGED_KEYS = 'price_1T0bTQFRJliLrxgl0Hu8D8GO';
+
 /** Stripe meter event names (must match meters in Stripe Dashboard) */
 export const STRIPE_METER_EVENT_TELEMETRY_EVENTS = 'telemetry_events';
 export const STRIPE_METER_EVENT_TOOL_PROFILES = 'tool_profiles';
+export const STRIPE_METER_EVENT_MANAGED_KEYS = 'managed_keys';
 
 /** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
 export function getStripe(apiKey?: string): Stripe | null {
@@ -147,6 +151,42 @@ export async function trackToolProfilesUsage(
   if (customer?.customer_stripe_id) {
     await createStripeMeterEvent(
       STRIPE_METER_EVENT_TOOL_PROFILES,
+      customer.customer_stripe_id,
+      quantity,
+      new Date(),
+      idempotencyKey,
+      stripeApiKey
+    );
+  }
+}
+
+/** Track managed OpenRouter keys. Reports to Stripe managed_keys meter when a key is created in the portal. */
+export async function trackManagedKeysUsage(
+  db: Database,
+  customerId: string,
+  quantity: number,
+  metadata?: Record<string, unknown>,
+  stripeApiKey?: string
+): Promise<void> {
+  const idempotencyKey = `${customerId}-managed_keys-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+  await db.insert(usageEvents).values({
+    customer_id: customerId,
+    event_type: 'managed_key',
+    idempotency_key: idempotencyKey,
+    quantity,
+    unit_price: '0',
+    total_price: '0',
+    metadata: metadata ? { ...metadata } : {},
+  });
+
+  const customer = await db.query.customers.findFirst({
+    where: eq(customers.id, customerId),
+    columns: { customer_stripe_id: true },
+  });
+  if (customer?.customer_stripe_id) {
+    await createStripeMeterEvent(
+      STRIPE_METER_EVENT_MANAGED_KEYS,
       customer.customer_stripe_id,
       quantity,
       new Date(),

@@ -168,7 +168,7 @@ app.get('/health', (c) =>
 
 app.route('/v1', authRouter);
 app.route('/v1', billingRouter);
-app.route('/v1/openrouter', openrouterRouter);
+app.route('/v1', openrouterRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);

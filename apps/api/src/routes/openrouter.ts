@@ -21,6 +21,7 @@ import {
   bulkUnassignKeysFromGuardrail,
   listGuardrailKeyAssignments,
 } from '../lib/openrouter.js';
+import { trackManagedKeysUsage } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -303,6 +304,9 @@ router.post('/keys/user', sessionOrTokenAuth, requireAdminOrManager, async (c) =
       })
       .returning();
 
+    const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+    await trackManagedKeysUsage(db, customer_id, 1, { openrouter_key_id: row.id }, stripeKey);
+
     return c.json(
       {
         id: row.id,
@@ -449,6 +453,9 @@ router.post('/keys/team/:teamId', sessionOrTokenAuth, requireAdminOrManager, asy
         created_by_user_id: currentUser.id,
       })
       .returning();
+
+    const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+    await trackManagedKeysUsage(db, team.customer_id, 1, { openrouter_key_id: row.id }, stripeKey);
 
     return c.json(
       {

@@ -1,13 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { Copy, Key, Trash2, User } from 'lucide-react';
-
-interface Customer {
-  id: string;
-  company_name: string;
-  billing_email: string;
-}
+import { Key, Trash2, User } from 'lucide-react';
 
 interface MeUser {
   id: string;
@@ -46,18 +40,11 @@ interface OpenRouterKey {
 }
 
 export function Settings() {
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [customerLoading, setCustomerLoading] = useState(true);
   const [meUser, setMeUser] = useState<MeUser | null>(null);
   const [meLoading, setMeLoading] = useState(true);
   const [profileImageUrl, setProfileImageUrl] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [tokenName, setTokenName] = useState('');
-  const [tokenTeamId, setTokenTeamId] = useState<string>('');
-  const [creatingToken, setCreatingToken] = useState(false);
-  const [createdToken, setCreatedToken] = useState<string | null>(null);
-  const [tokenError, setTokenError] = useState('');
   const [tokens, setTokens] = useState<ApiTokenItem[]>([]);
   const [tokensLoading, setTokensLoading] = useState(true);
   const [tokensError, setTokensError] = useState('');
@@ -83,16 +70,6 @@ export function Settings() {
       setOpenrouterKeysLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetch(`${API_BASE}/v1/customers/me`, { credentials: 'include', headers: getAuthHeaders() })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.customer) setCustomer(data.customer);
-        setCustomerLoading(false);
-      })
-      .catch(() => setCustomerLoading(false));
-  }, []);
 
   useEffect(() => {
     fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() })
@@ -155,38 +132,6 @@ export function Settings() {
     }
   };
 
-  const createToken = async () => {
-    if (!customer?.id || !tokenName.trim()) return;
-    setCreatingToken(true);
-    setTokenError('');
-    setCreatedToken(null);
-    try {
-      const res = await fetch(`${API_BASE}/v1/tokens`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        credentials: 'include',
-        body: JSON.stringify({
-          customer_id: customer.id,
-          name: tokenName.trim(),
-          ...(tokenTeamId ? { team_id: tokenTeamId } : {}),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create token');
-      setCreatedToken(data.token?.token ?? null);
-      setTokenName('');
-      setTokenTeamId('');
-      await loadTokens();
-    } catch (e) {
-      setTokenError(e instanceof Error ? e.message : 'Failed to create token');
-    } finally {
-      setCreatingToken(false);
-    }
-  };
-
-
-  // Create a token and open VS Code via deep link so the extension can store it (no manual paste).
-
   const deleteToken = async (tokenId: string) => {
     if (!confirm('Delete this API token?')) return;
     await fetch(`${API_BASE}/v1/tokens/${tokenId}`, {
@@ -233,10 +178,6 @@ export function Settings() {
     } finally {
       setProfileSaving(false);
     }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
   };
 
   return (
@@ -337,112 +278,6 @@ export function Settings() {
         )}
       </div>
 
-      {/* Create API token */}
-      <div className="card">
-        <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Key size={20} />
-          Create API token
-        </h2>
-        <p style={{ color: '#555', fontSize: '15px', marginBottom: '20px' }}>
-          Use an API token to send events from agents or scripts. Your <strong>customer ID</strong> is filled in below.
-        </p>
-
-        {customerLoading ? (
-          <p style={{ color: '#666' }}>Loading…</p>
-        ) : !customer ? (
-          <p style={{ color: '#666' }}>Unable to load workspace.</p>
-        ) : (
-          <>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
-                Customer ID (use this when creating tokens)
-              </label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input
-                  className="input"
-                  type="text"
-                  readOnly
-                  value={customer.id}
-                  style={{ fontFamily: 'monospace', fontSize: '14px' }}
-                />
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => copyToClipboard(customer.id)}
-                  style={{ flexShrink: 0 }}
-                >
-                  <Copy size={16} />
-                  Copy
-                </button>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
-                Token name (e.g. CLI, Cursor, CI)
-              </label>
-              <input
-                className="input"
-                type="text"
-                value={tokenName}
-                onChange={(e) => setTokenName(e.target.value)}
-                placeholder="e.g. CLI"
-                disabled={creatingToken}
-              />
-            </div>
-            {(meUser?.role === 'manager' || meUser?.role === 'admin') && (
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
-                  Team (required)
-                </label>
-                <select
-                  className="input"
-                  value={tokenTeamId}
-                  onChange={(e) => setTokenTeamId(e.target.value)}
-                >
-                  <option value="">Select team</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                {!tokenTeamId && (
-                  <p style={{ margin: '6px 0 0', color: '#dc2626', fontSize: '12px', fontWeight: 600 }}>
-                    Error: Team-scoped key required
-                  </p>
-                )}
-              </div>
-            )}
-
-            {tokenError && (
-              <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #dc2626', color: '#dc2626', fontWeight: 600 }}>
-                {tokenError}
-              </div>
-            )}
-
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={createToken}
-              disabled={creatingToken || !tokenName.trim() || ((meUser?.role === 'manager' || meUser?.role === 'admin') && !tokenTeamId)}
-              >
-              {creatingToken ? 'Creating…' : 'Create token'}
-            </button>
-
-            {createdToken && (
-              <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '8px' }}>
-                <p style={{ fontWeight: 600, marginBottom: '8px' }}>Token created — copy it now. It won’t be shown again.</p>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <code style={{ flex: '1 1 200px', wordBreak: 'break-all', fontSize: '13px' }}>{createdToken}</code>
-                  <button type="button" className="btn" onClick={() => copyToClipboard(createdToken)}>
-                    <Copy size={16} /> Copy
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
       {/* API tokens list */}
       <div className="card" style={{ gridColumn: '1 / -1' }}>
         <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -493,21 +328,21 @@ export function Settings() {
         )}
       </div>
 
-      {/* OpenRouter keys (for you) - provisioned by managers */}
+      {/* Inference keys (for you) - provisioned by managers */}
       <div className="card" style={{ gridColumn: '1 / -1' }}>
         <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Key size={20} />
-          OpenRouter keys (for you)
+          Inference keys (for you)
         </h2>
         <p style={{ color: '#555', fontSize: '15px', marginBottom: '20px' }}>
-          OpenRouter keys provisioned for you by a manager. Use in agents or the VS Code extension for LLM access.
+          Inference keys provisioned for you by a manager. Use in agents or the VS Code extension for LLM access.
         </p>
         {openrouterKeysLoading ? (
           <p style={{ color: '#666' }}>Loading…</p>
         ) : openrouterKeysError ? (
           <p style={{ color: '#dc2626', fontWeight: 600 }}>{openrouterKeysError}</p>
         ) : openrouterKeys.length === 0 ? (
-          <p style={{ color: '#666' }}>No OpenRouter keys provisioned for you yet. Ask a manager to provision one from your user profile.</p>
+          <p style={{ color: '#666' }}>No inference keys provisioned for you yet. Ask a manager to provision one from your user profile.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {openrouterKeys.map((k) => (

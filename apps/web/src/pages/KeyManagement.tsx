@@ -243,7 +243,7 @@ export function KeyManagement() {
           Key provisioning
         </h1>
         <p style={{ color: '#555', fontSize: '16px' }}>
-          Manage OpenRouter API keys for users and teams. Keys are used in agents or the VS Code extension for LLM access. Use <Link to="/guardrails" style={{ color: 'var(--accent-blue)', textDecoration: 'underline' }}>Guardrails</Link> to limit which models keys can use.
+          Manage inference keys for users and teams. Keys are used in agents or the VS Code extension for LLM access. Use <Link to="/guardrails" style={{ color: 'var(--accent-blue)', textDecoration: 'underline' }}>Guardrails</Link> to limit which models keys can use.
         </p>
       </div>
 
@@ -545,7 +545,7 @@ function ProvisionUserModal({
           <div>
             <h2 className="heading-3" style={{ margin: 0 }}>Provision key for user</h2>
             <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#555' }}>
-              Create an OpenRouter key for a user. They will see it in Settings.
+              Create an  key for a user. They will see it in Settings.
             </p>
           </div>
           <button
@@ -659,7 +659,7 @@ function ProvisionTeamModal({
           <div>
             <h2 className="heading-3" style={{ margin: 0 }}>Provision key for team</h2>
             <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#555' }}>
-              Create an OpenRouter key for a team. Team members will see it in Settings.
+              Create an inference key for a team. Team members will see it in Settings.
             </p>
           </div>
           <button
