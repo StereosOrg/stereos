@@ -480,7 +480,7 @@ paths:
         '403':
           description: Admin required
 
-  /v1/openrouter/keys/customer:
+  /v1/keys/customer:
     get:
       tags: [OpenRouter]
       summary: List all OpenRouter keys for customer (admin/manager)
@@ -492,7 +492,7 @@ paths:
         '403':
           description: Admin/manager required
 
-  /v1/openrouter/keys/user:
+  /v1/keys/user:
     get:
       tags: [OpenRouter]
       summary: List user's OpenRouter keys
@@ -500,7 +500,7 @@ paths:
         '200':
           description: User and team keys
 
-  /v1/openrouter/keys/user/{userId}:
+  /v1/keys/user/{userId}:
     get:
       tags: [OpenRouter]
       summary: List keys for a user
@@ -540,7 +540,7 @@ paths:
         '403':
           description: Admin/manager required
 
-  /v1/openrouter/keys/user/{hash}:
+  /v1/keys/user/{hash}:
     delete:
       tags: [OpenRouter]
       summary: Delete user OpenRouter key
@@ -555,7 +555,7 @@ paths:
         '403':
           description: Forbidden
 
-  /v1/openrouter/keys/team/{teamId}:
+  /v1/keys/team/{teamId}:
     get:
       tags: [OpenRouter]
       summary: List team OpenRouter keys
@@ -592,7 +592,7 @@ paths:
         '403':
           description: Admin/manager required
 
-  /v1/openrouter/keys/team/{teamId}/{hash}:
+  /v1/keys/team/{teamId}/{hash}:
     delete:
       tags: [OpenRouter]
       summary: Delete team OpenRouter key
@@ -611,7 +611,7 @@ paths:
         '403':
           description: Admin/manager required
 
-  /v1/openrouter/keys/{hash}:
+  /v1/keys/{hash}:
     delete:
       tags: [OpenRouter]
       summary: Delete any OpenRouter key (admin/manager)
@@ -626,7 +626,7 @@ paths:
         '403':
           description: Admin/manager required
 
-  /v1/openrouter/keys/{hash}/details:
+  /v1/keys/{hash}/details:
     get:
       tags: [OpenRouter]
       summary: Get OpenRouter key details (usage, limit)
@@ -643,7 +643,7 @@ paths:
         '404':
           description: Key not found
 
-  /v1/openrouter/guardrails:
+  /v1/guardrails:
     get:
       tags: [OpenRouter]
       summary: List guardrails (admin/manager)
@@ -675,7 +675,7 @@ paths:
         '403':
           description: Admin/manager required
 
-  /v1/openrouter/guardrails/{id}/assignments/keys:
+  /v1/guardrails/{id}/assignments/keys:
     get:
       tags: [OpenRouter]
       summary: List guardrail key assignments
