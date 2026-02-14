@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowLeft } from 'lucide-react';
+import { ArrowRight, ArrowLeft, BarChart3, Key, Zap } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
+import { SplitAuthLayout } from '../components/SplitAuthLayout';
 
 const titles = [
   { value: 'engineer', label: 'Engineer' },
@@ -87,48 +88,91 @@ export function Onboarding() {
     }
   };
 
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-mint)',
-        padding: '16px',
-      }}
-    >
-      <div
+  const leftPanel = (
+    <div>
+      <h1
         style={{
-          width: '100%',
-          maxWidth: '560px',
+          fontFamily: "'Sora', sans-serif",
+          fontSize: 'clamp(24px, 4vw, 32px)',
+          fontWeight: 800,
+          lineHeight: 1.15,
+          letterSpacing: '-0.03em',
+          color: '#0f172a',
+          marginBottom: '20px',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
         }}
       >
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ marginBottom: '8px' }}>
-            <img
-              src="/transparent-logo.png"
-              alt="Stereos"
+        AI usage telemetry and managed keys for your team
+      </h1>
+      <p style={{ color: '#475569', fontSize: '16px', lineHeight: 1.65, marginBottom: '32px', fontWeight: 500 }}>
+        Stereos helps engineering teams observe AI usage, provision OpenRouter keys, and keep costs under control.
+      </p>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {[
+          { icon: BarChart3, text: 'Trace LLM calls and usage across tools like Cursor, CLI, and agents', color: '#059669', bg: 'rgba(5,150,105,0.12)' },
+          { icon: Key, text: 'Manage OpenRouter keys with per-user limits and team visibility', color: '#7c3aed', bg: 'rgba(124,58,237,0.12)' },
+          { icon: Zap, text: 'Metered billing — pay for what you use, no surprises', color: '#d97706', bg: 'rgba(217,119,6,0.12)' },
+        ].map(({ icon: Icon, text, color, bg }) => (
+          <li
+            key={text.slice(0, 20)}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '16px',
+              marginBottom: '24px',
+              fontSize: '16px',
+              color: '#334155',
+              lineHeight: 1.55,
+              fontWeight: 500,
+            }}
+          >
+            <div
               style={{
-                height: '64px',
-                width: 'auto',
-                display: 'block',
-                objectFit: 'contain',
+                flexShrink: 0,
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: bg,
+                border: `1px solid ${color}33`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
               }}
-            />
-          </div>
-          <p style={{ color: '#555', fontSize: '16px' }}>
-            Complete your setup to get started
-          </p>
-        </div>
+            >
+              <Icon size={22} color={color} strokeWidth={2.5} />
+            </div>
+            <span>{text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 
-        {/* Progress Bar */}
+  const rightPanel = (
+    <div style={{ width: '100%' }}>
+      <p
+        style={{
+          fontFamily: "'Sora', sans-serif",
+          color: '#64748b',
+          fontSize: '15px',
+          marginBottom: '20px',
+          textAlign: 'center',
+          fontWeight: 500,
+        }}
+      >
+        Complete your setup to get started
+      </p>
+
+      {/* Progress Bar */}
         <div
           style={{
             display: 'flex',
-            gap: '8px',
-            marginBottom: '32px',
+            gap: '10px',
+            marginBottom: '28px',
           }}
         >
           {[1, 2].map((s) => (
@@ -136,16 +180,26 @@ export function Onboarding() {
               key={s}
               style={{
                 flex: 1,
-                height: '8px',
-                background: s <= step ? 'var(--dark)' : '#ddd',
-                border: '1px solid var(--border-default)',
+                height: '6px',
+                borderRadius: '3px',
+                background: s <= step ? 'var(--gradient-auth-accent)' : '#e2e8f0',
+                boxShadow: s <= step ? '0 2px 6px rgba(5,150,105,0.25)' : 'none',
               }}
             />
           ))}
         </div>
 
         {/* Card */}
-        <div className="card" style={{ background: 'var(--bg-white)' }}>
+        <div
+          className="card"
+          style={{
+            background: 'var(--bg-white)',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '32px',
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 10px 20px -5px rgba(0,0,0,0.04)',
+          }}
+        >
           {error && (
             <div
               style={{
@@ -164,10 +218,10 @@ export function Onboarding() {
           <form onSubmit={handleSubmit}>
             {step === 1 && (
               <>
-                <h2 className="heading-2" style={{ fontSize: '28px', marginBottom: '8px' }}>
+                <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: '#0f172a' }}>
                   Personal Information
                 </h2>
-                <p style={{ color: '#666', marginBottom: '32px' }}>
+                <p style={{ color: '#64748b', marginBottom: '28px', fontSize: '15px' }}>
                   Tell us about yourself
                 </p>
 
@@ -281,10 +335,10 @@ export function Onboarding() {
 
             {step === 2 && (
               <>
-                <h2 className="heading-2" style={{ fontSize: '28px', marginBottom: '8px' }}>
+                <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: '#0f172a' }}>
                   Company Information
                 </h2>
-                <p style={{ color: '#666', marginBottom: '32px' }}>
+                <p style={{ color: '#64748b', marginBottom: '28px', fontSize: '15px' }}>
                   {isMember ? 'Your organization details' : 'Set up your organization'}
                 </p>
 
@@ -363,14 +417,21 @@ export function Onboarding() {
           </form>
         </div>
 
-        {/* Footer */}
-        <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginTop: '24px' }}>
-          Already have an account?{' '}
-          <a href="/auth/sign-in" style={{ color: 'var(--dark)', fontWeight: 600 }}>
-            Sign in
-          </a>
-        </p>
-      </div>
+      {/* Footer */}
+      <p style={{ textAlign: 'center', color: '#64748b', fontSize: '14px', marginTop: '28px', fontWeight: 500 }}>
+        Already have an account?{' '}
+        <a href="/auth/sign-in" style={{ color: 'var(--dark)', fontWeight: 600 }}>
+          Sign in
+        </a>
+      </p>
     </div>
+  );
+
+  return (
+    <SplitAuthLayout
+      leftPanel={leftPanel}
+      rightPanel={rightPanel}
+      rightPanelMaxWidth={560}
+    />
   );
 }

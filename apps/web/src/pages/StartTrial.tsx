@@ -2,19 +2,21 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { CheckoutProvider, useCheckout, PaymentElement } from '@stripe/react-stripe-js';
-import { CreditCard } from 'lucide-react';
-import { AuthLayout } from '../components/AuthLayout';
+import { CreditCard, DollarSign, Calendar } from 'lucide-react';
+import { SplitAuthLayout } from '../components/SplitAuthLayout';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 
-// Stripe appearance: matches apps/web/src/styles/neobrutalist.css border & elevation system
+// Stripe appearance: matches our design system, compact inputs
 const STRIPE_APPEARANCE = {
   theme: 'flat' as const,
+  inputs: 'condensed' as const,
   variables: {
-    colorPrimary: '#111827',
+    colorPrimary: '#059669',
     colorBackground: '#ffffff',
-    colorText: '#111827',
+    colorText: '#0f172a',
     colorDanger: '#dc2626',
-    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily: "'Sora', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontSizeBase: '16px',
     borderRadius: '6px',
     spacingUnit: '4px',
   },
@@ -23,6 +25,8 @@ const STRIPE_APPEARANCE = {
       border: '1px solid #d1d5db',
       boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       backgroundColor: '#ffffff',
+      padding: '10px 12px',
+      fontSize: '16px',
     },
     '.Input:focus': {
       borderColor: '#2563eb',
@@ -35,6 +39,7 @@ const STRIPE_APPEARANCE = {
     '.Label': {
       color: '#111827',
       fontWeight: '600',
+      fontSize: '14px',
     },
     '.Tab': {
       border: '1px solid #e2e8f0',
@@ -184,6 +189,60 @@ export function StartTrial() {
     boxShadow: 'var(--shadow-md)',
   };
 
+  const trialLeftPanel = (
+    <div>
+      <h1 className="heading-2" style={{ fontSize: '26px', marginBottom: '14px', lineHeight: 1.2 }}>
+        Start your 14-day free trial
+      </h1>
+      <p style={{ color: '#555', fontSize: '15px', lineHeight: 1.6, marginBottom: '20px' }}>
+        No charge during the trial. Add your payment method now to continue — we’ll only charge you when the trial ends.
+      </p>
+      <div
+        style={{
+          background: 'var(--bg-white)',
+          border: '1px solid var(--border-default)',
+          borderRadius: '8px',
+          padding: '20px',
+          marginBottom: '24px',
+        }}
+      >
+        <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <DollarSign size={18} />
+          What’s included
+        </h3>
+        <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', lineHeight: 1.8, color: 'var(--dark)' }}>
+          <li>Telemetry events — $0.0025 per event</li>
+          <li>Managed OpenRouter keys — per key</li>
+          <li>Flat monthly base — $450/mo</li>
+        </ul>
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '12px',
+          fontSize: '14px',
+          color: '#555',
+          lineHeight: 1.5,
+        }}
+      >
+        <Calendar size={20} style={{ flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <strong style={{ color: 'var(--dark)' }}>14-day trial</strong> — Cancel anytime. Your card won’t be charged until the trial ends.
+        </div>
+      </div>
+    </div>
+  );
+
+  const wrapWithSplitLayout = (rightContent: React.ReactNode, showLogo = true) => (
+    <SplitAuthLayout
+      leftPanel={trialLeftPanel}
+      rightPanel={rightContent}
+      showLogo={showLogo}
+      rightPanelMaxWidth={560}
+    />
+  );
+
   const errorBlockStyle: React.CSSProperties = {
     background: '#fef2f2',
     border: '1px solid #dc2626',
@@ -194,107 +253,115 @@ export function StartTrial() {
   };
 
   if (sessionId) {
-    return (
-      <AuthLayout title="Start your trial" subtitle="Confirming your payment…">
-        <div className="card" style={{ ...cardStyle, padding: '32px', textAlign: 'center' }}>
-          {confirming && !error && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-              <div
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  border: '2px solid var(--border-default)',
-                  borderTopColor: 'var(--dark)',
-                  borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite',
-                }}
-              />
-              <p style={{ color: 'var(--dark)', fontWeight: 600 }}>One moment…</p>
-            </div>
-          )}
-          {error && <div style={errorBlockStyle}>{error}</div>}
-        </div>
+    return wrapWithSplitLayout(
+      <div className="card" style={{ ...cardStyle, padding: '32px', textAlign: 'center', width: '100%' }}>
+        {confirming && !error && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                border: '2px solid var(--border-default)',
+                borderTopColor: 'var(--dark)',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }}
+            />
+            <p style={{ color: 'var(--dark)', fontWeight: 600 }}>One moment…</p>
+          </div>
+        )}
+        {error && <div style={errorBlockStyle}>{error}</div>}
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </AuthLayout>
+      </div>
     );
   }
 
   if (!stripePublishableKey) {
-    return (
-      <AuthLayout title="Start your trial">
-        <div className="card" style={{ ...cardStyle, padding: '24px' }}>
-          <p style={{ color: 'var(--dark)', fontSize: '15px', lineHeight: 1.6 }}>
-            {hasWrongKey ? (
-              <>
-                Use your <strong>publishable</strong> key (<code>pk_test_...</code> or <code>pk_live_...</code>) in{' '}
-                <code>VITE_STRIPE_PUBLISHABLE_KEY</code>, not your secret key. Secret keys must stay on the server only.
-              </>
-            ) : (
-              'Stripe is not configured. Set VITE_STRIPE_PUBLISHABLE_KEY (publishable key) to enable checkout.'
-            )}
-          </p>
-        </div>
-      </AuthLayout>
+    return wrapWithSplitLayout(
+      <div className="card" style={{ ...cardStyle, padding: '24px', width: '100%' }}>
+        <p style={{ color: 'var(--dark)', fontSize: '15px', lineHeight: 1.6 }}>
+          {hasWrongKey ? (
+            <>
+              Use your <strong>publishable</strong> key (<code>pk_test_...</code> or <code>pk_live_...</code>) in{' '}
+              <code>VITE_STRIPE_PUBLISHABLE_KEY</code>, not your secret key. Secret keys must stay on the server only.
+            </>
+          ) : (
+            'Stripe is not configured. Set VITE_STRIPE_PUBLISHABLE_KEY (publishable key) to enable checkout.'
+          )}
+        </p>
+      </div>
     );
   }
 
   if (loading) {
-    return (
-      <AuthLayout title="Start your trial" subtitle="Loading checkout…">
-        <div className="card" style={{ ...cardStyle, padding: '40px', textAlign: 'center' }}>
-          <div
-            style={{
-              width: '48px',
-              height: '48px',
-              margin: '0 auto 16px',
-                  border: '2px solid var(--border-default)',
-              borderTopColor: 'var(--dark)',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite',
-            }}
-          />
-          <p style={{ color: 'var(--dark)', fontWeight: 600 }}>Loading…</p>
-        </div>
+    return wrapWithSplitLayout(
+      <div className="card" style={{ ...cardStyle, padding: '40px', textAlign: 'center', width: '100%' }}>
+        <div
+          style={{
+            width: '48px',
+            height: '48px',
+            margin: '0 auto 16px',
+            border: '2px solid var(--border-default)',
+            borderTopColor: 'var(--dark)',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+          }}
+        />
+        <p style={{ color: 'var(--dark)', fontWeight: 600 }}>Loading checkout…</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </AuthLayout>
+      </div>
     );
   }
 
   if (error && !clientSecret) {
-    return (
-      <AuthLayout title="Start your trial">
-        <div className="card" style={{ ...cardStyle, padding: '24px' }}>
-          <div style={errorBlockStyle}>{error}</div>
-        </div>
-      </AuthLayout>
+    return wrapWithSplitLayout(
+      <div className="card" style={{ ...cardStyle, padding: '24px', width: '100%' }}>
+        <div style={errorBlockStyle}>{error}</div>
+      </div>
     );
   }
 
   if (!clientSecret) {
-    return (
-      <AuthLayout title="Start your trial">
-        <div className="card" style={{ ...cardStyle, padding: '24px' }}>
-          <p style={{ color: 'var(--dark)' }}>Unable to start checkout. Please try again.</p>
-        </div>
-      </AuthLayout>
+    return wrapWithSplitLayout(
+      <div className="card" style={{ ...cardStyle, padding: '24px', width: '100%' }}>
+        <p style={{ color: 'var(--dark)' }}>Unable to start checkout. Please try again.</p>
+      </div>
     );
   }
 
-  return (
-    <AuthLayout
-      title="Start your trial"
-      subtitle="Complete payment below to continue. You can only proceed after checkout is done."
-      contentMaxWidth={560}
-    >
-      <div className="card" style={cardStyle}>
+  return wrapWithSplitLayout(
+    <div style={{ width: '100%' }}>
+      <p
+        style={{
+          fontFamily: "'Sora', sans-serif",
+          color: '#64748b',
+          fontSize: '15px',
+          marginBottom: '20px',
+          textAlign: 'center',
+          fontWeight: 500,
+        }}
+      >
+        Complete payment below to continue
+      </p>
+      <div
+        className="card"
+        style={{
+          ...cardStyle,
+          borderRadius: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 10px 20px -5px rgba(0,0,0,0.04)',
+          maxWidth: '100%',
+        }}
+      >
         <div
           style={{
             borderBottom: 'var(--border-width) solid var(--border-color)',
-            padding: '20px 24px',
+            padding: '16px 20px',
             background: 'var(--bg-white)',
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
+            flexShrink: 0,
           }}
         >
           <div
@@ -315,7 +382,7 @@ export function StartTrial() {
             Enter your payment details below. When finished, you’ll be able to continue.
           </p>
         </div>
-        <div style={{ padding: '24px', width: '100%' }}>
+        <div style={{ padding: '20px 24px', width: '100%', boxSizing: 'border-box' }}>
           {error && (
             <div style={{ ...errorBlockStyle, marginBottom: '20px' }}>{error}</div>
           )}
@@ -333,7 +400,7 @@ export function StartTrial() {
           )}
         </div>
       </div>
-    </AuthLayout>
+    </div>
   );
 }
 
@@ -425,7 +492,15 @@ function CheckoutForm({ onError }: { onError: (msg: string) => void }) {
 
   return (
     <form onSubmit={handleSubmit} style={{ width: '100%' }}>
-      <div style={{ marginBottom: '20px', minHeight: '280px' }}>
+      <div
+        style={{
+          marginBottom: '20px',
+          minHeight: '240px',
+          maxHeight: '320px',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+        }}
+      >
         <PaymentElement />
       </div>
       <button

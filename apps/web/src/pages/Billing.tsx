@@ -87,7 +87,7 @@ export function Billing() {
       </p>
 
       <div className="card" style={{ maxWidth: '560px' }}>
-        <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h2 className="heading-2" style={{ fontSize: '18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <CreditCard size={20} />
           Workspace billing
         </h2>

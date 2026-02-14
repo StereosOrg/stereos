@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { Shield, ShieldPlus, X } from 'lucide-react';
+import { Shield, ShieldPlus, Trash2, X } from 'lucide-react';
 
 interface Guardrail {
   id: string;
@@ -170,6 +170,26 @@ export function Guardrails() {
     });
   };
 
+  const deleteGuardrailHandler = async (guardrail: Guardrail) => {
+    if (!confirm(`Delete guardrail "${guardrail.name}"? This will unassign all keys from it.`)) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/v1/guardrails/${guardrail.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to delete guardrail');
+      queryClient.invalidateQueries({ queryKey: ['guardrails'] });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to delete guardrail');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div>
       <div style={{ marginBottom: '24px' }}>
@@ -213,15 +233,31 @@ export function Guardrails() {
                   background: 'var(--bg-cream)',
                   border: '1px solid var(--border-default)',
                   borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: '16px',
                 }}
               >
-                <p style={{ margin: 0, fontWeight: 600, fontSize: '16px' }}>{g.name}</p>
-                {g.description && <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#555' }}>{g.description}</p>}
-                <div style={{ marginTop: '8px', display: 'flex', gap: '16px', fontSize: '13px', color: '#666' }}>
-                  {g.limit_usd != null && <span>Limit: ${g.limit_usd}/{(g.reset_interval ?? 'month')}</span>}
-                  {g.reset_interval && <span>Reset: {g.reset_interval}</span>}
-                  <span>Created {new Date(g.created_at).toLocaleDateString()}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: '16px' }}>{g.name}</p>
+                  {g.description && <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#555' }}>{g.description}</p>}
+                  <div style={{ marginTop: '8px', display: 'flex', gap: '16px', fontSize: '13px', color: '#666' }}>
+                    {g.limit_usd != null && <span>Limit: ${g.limit_usd}/{(g.reset_interval ?? 'month')}</span>}
+                    {g.reset_interval && <span>Reset: {g.reset_interval}</span>}
+                    <span>Created {new Date(g.created_at).toLocaleDateString()}</span>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => deleteGuardrailHandler(g)}
+                  disabled={loading}
+                  style={{ color: '#dc2626', flexShrink: 0 }}
+                  title="Delete guardrail"
+                >
+                  <Trash2 size={18} />
+                </button>
               </div>
             ))}
           </div>

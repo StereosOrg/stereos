@@ -14,29 +14,29 @@ export function AuthLayout({ children, title, subtitle, contentMaxWidth = 420 }:
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--bg-mint)',
-        padding: '16px',
+        background: 'var(--gradient-auth-left)',
+        padding: '24px',
       }}
     >
       <div style={{ width: '100%', maxWidth: `${contentMaxWidth}px` }}>
-        <div style={{ textAlign: 'center', marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ marginBottom: '8px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ marginBottom: '12px' }}>
             <img
               src="/transparent-logo.png"
               alt="Stereos"
               style={{
-                height: '64px',
+                height: '56px',
                 width: 'auto',
                 display: 'block',
                 objectFit: 'contain',
               }}
             />
           </div>
-          <h1 className="heading-2" style={{ fontSize: '24px', marginBottom: '4px' }}>
+          <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: '22px', fontWeight: 800, marginBottom: '6px', color: '#0f172a' }}>
             {title}
           </h1>
           {subtitle && (
-            <p style={{ color: '#555', fontSize: '15px' }}>{subtitle}</p>
+            <p style={{ color: '#64748b', fontSize: '15px', fontWeight: 500 }}>{subtitle}</p>
           )}
         </div>
         {children}

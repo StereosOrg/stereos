@@ -217,7 +217,7 @@ export async function createEmbeddedCheckoutSession(
       metadata: { customer_id: customerId },
       line_items: [
         { price: PRICE_ID_TELEMETRY_EVENTS },
-        { price: PRICE_ID_TOOL_PROFILES },
+        { price: PRICE_ID_MANAGED_KEYS },
         { price: PRICE_ID_FLAT_MONTHLY, quantity: 1 },
       ],
       subscription_data: {

@@ -198,7 +198,7 @@ export function Settings() {
       >
       {/* Profile picture URL */}
       <div className="card">
-        <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h2 className="heading-2" style={{ fontSize: '18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <User size={20} />
           Profile picture
         </h2>
@@ -279,8 +279,8 @@ export function Settings() {
       </div>
 
       {/* API tokens list */}
-      <div className="card" style={{ gridColumn: '1 / -1' }}>
-        <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="card">
+        <h2 className="heading-2" style={{ fontSize: '18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Key size={20} />
           API tokens
         </h2>
@@ -296,8 +296,8 @@ export function Settings() {
         ) : tokens.length === 0 ? (
           <p style={{ color: '#666' }}>No tokens yet.</p>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+            <table style={{ width: '100%', minWidth: '360px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-mint)', borderBottom: 'var(--border-width) solid var(--border-color)' }}>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>Name</th>
@@ -328,9 +328,9 @@ export function Settings() {
         )}
       </div>
 
-      {/* Inference keys (for you) - provisioned by managers */}
+      {/* Inference keys (for you) - provisioned by managers - full width */}
       <div className="card" style={{ gridColumn: '1 / -1' }}>
-        <h2 className="heading-2" style={{ fontSize: '20px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h2 className="heading-2" style={{ fontSize: '18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Key size={20} />
           Inference keys (for you)
         </h2>

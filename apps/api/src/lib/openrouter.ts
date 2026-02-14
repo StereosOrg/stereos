@@ -138,6 +138,21 @@ export async function listGuardrails(
   return res.json() as Promise<{ data: Guardrail[]; total_count: number }>;
 }
 
+export async function deleteGuardrail(
+  managementKey: string,
+  guardrailId: string
+): Promise<{ deleted: boolean }> {
+  const res = await fetch(`${OPENROUTER_BASE}/guardrails/${encodeURIComponent(guardrailId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${managementKey}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenRouter delete guardrail failed: ${res.status} ${text}`);
+  }
+  return res.json() as Promise<{ deleted: boolean }>;
+}
+
 export async function createGuardrail(
   managementKey: string,
   params: {

@@ -675,6 +675,23 @@ paths:
         '403':
           description: Admin/manager required
 
+  /v1/guardrails/{id}:
+    delete:
+      tags: [OpenRouter]
+      summary: Delete guardrail (admin/manager)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Guardrail deleted
+        '403':
+          description: Admin/manager required
+        '404':
+          description: Guardrail not found
+
   /v1/guardrails/{id}/assignments/keys:
     get:
       tags: [OpenRouter]

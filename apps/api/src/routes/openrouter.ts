@@ -17,6 +17,7 @@ import {
   getOpenRouterKey,
   listGuardrails,
   createGuardrail,
+  deleteGuardrail,
   bulkAssignKeysToGuardrail,
   bulkUnassignKeysFromGuardrail,
   listGuardrailKeyAssignments,
@@ -648,6 +649,21 @@ router.post('/guardrails', sessionOrTokenAuth, requireAdminOrManager, async (c) 
     return c.json(result, 201);
   } catch (err) {
     console.error('[openrouter] create guardrail error', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+// DELETE /v1/guardrails/:id - Delete guardrail
+router.delete('/guardrails/:id', sessionOrTokenAuth, requireAdminOrManager, async (c) => {
+  const managementKey = getManagementKey(c);
+  if (!managementKey) return c.json({ error: 'OpenRouter management key not configured' }, 503);
+  const guardrailId = c.req.param('id');
+  try {
+    await deleteGuardrail(managementKey, guardrailId);
+    return c.json({ deleted: true });
+  } catch (err) {
+    console.error('[openrouter] delete guardrail error', err);
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: msg }, 500);
   }

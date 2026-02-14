@@ -78,7 +78,7 @@ export function Layout() {
                 }}
               />
             </div>
-            <span style={{ fontSize: '24px', fontWeight: 800 }}>STEREOS</span>
+            <span style={{ fontSize: '20px', fontWeight: 800 }}>Stereos</span>
           </Link>
         </div>
 
