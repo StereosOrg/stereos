@@ -155,7 +155,7 @@ export function Onboarding() {
   const rightPanel = (
     <div style={{ width: '100%' }}>
       <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: '20px', fontWeight: 700, textAlign: 'center', marginBottom: '20px', color: '#0f172a' }}>
-        Start your 14-day free trial
+        Start your 14-day free trial of Stereos
       </h2>
       <p
         style={{
