@@ -154,6 +154,9 @@ export function Onboarding() {
 
   const rightPanel = (
     <div style={{ width: '100%' }}>
+      <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: '#0f172a' }}>
+        Start your 14-day free trial
+      </h2>
       <p
         style={{
           fontFamily: "'Sora', sans-serif",
