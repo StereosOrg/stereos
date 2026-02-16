@@ -272,6 +272,53 @@ router.get('/ai/keys/user/:userId', requireAuth, async (c) => {
   }
 });
 
+// GET /v1/ai/keys/team/:teamId - List keys for team
+router.get('/ai/keys/team/:teamId', requireAuth, async (c) => {
+  const db = c.get('db') as Database;
+  const teamId = c.req.param('teamId');
+  const currentUser = c.get('user');
+
+  try {
+    // Check if user is a member of the team
+    const membership = await db.query.teamMembers.findFirst({
+      where: and(
+        eq(schema.teamMembers.team_id, teamId),
+        eq(schema.teamMembers.user_id, currentUser?.id as string)
+      ),
+    });
+
+    if (!membership && !['admin', 'manager'].includes(currentUser?.role as string)) {
+      return c.json({ error: 'Unauthorized - Not a team member' }, 403);
+    }
+
+    const keys = await db.query.aiGatewayKeys.findMany({
+      where: eq(schema.aiGatewayKeys.team_id, teamId),
+      with: {
+        user: { columns: { id: true, name: true, email: true } },
+      },
+      orderBy: (keys, { desc }) => [desc(keys.created_at)],
+    });
+
+    return c.json({
+      keys: keys.map(k => ({
+        id: k.id,
+        name: k.name,
+        key_hash: k.key_hash,
+        budget_usd: k.budget_usd,
+        spend_usd: k.spend_usd,
+        budget_reset: k.budget_reset,
+        allowed_models: k.allowed_models,
+        disabled: k.disabled,
+        user: k.user,
+        created_at: k.created_at,
+      })),
+    });
+  } catch (error) {
+    console.error('Error listing team keys:', error);
+    return c.json({ error: 'Failed to list keys' }, 500);
+  }
+});
+
 // GET /v1/ai/keys/:hash/details - Get key details
 router.get('/ai/keys/:hash/details', requireAuth, async (c) => {
   const db = c.get('db') as Database;

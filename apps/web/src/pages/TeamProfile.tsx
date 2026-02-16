@@ -32,14 +32,16 @@ interface TeamProfileResponse {
   }>;
 }
 
-interface OpenRouterKey {
+interface AiGatewayKey {
   id: string;
-  openrouter_key_hash: string;
+  key_hash: string;
   name: string;
-  customer_id: string;
-  team_id: string | null;
-  limit_usd: string | null;
-  limit_reset: string | null;
+  budget_usd: string | null;
+  spend_usd: string;
+  budget_reset: string | null;
+  allowed_models: string[] | null;
+  disabled: boolean;
+  user: { id: string; name: string | null; email: string | null } | null;
   created_at: string;
 }
 
@@ -76,10 +78,10 @@ export function TeamProfile() {
     data: teamKeysData,
     isLoading: teamKeysLoading,
     refetch: refetchTeamKeys,
-  } = useQuery<{ keys: OpenRouterKey[] }>({
+  } = useQuery<{ keys: AiGatewayKey[] }>({
     queryKey: ['team-keys', teamId],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/keys/team/${teamId}`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/team/${teamId}`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
@@ -100,7 +102,7 @@ export function TeamProfile() {
     setCreateKeyError('');
     setCreatedKeyRaw(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/keys/team/${teamId}`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/team/${teamId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
@@ -119,9 +121,9 @@ export function TeamProfile() {
   };
 
   const revokeTeamKey = async (hash: string) => {
-    if (!confirm('Revoke this OpenRouter key? It will stop working immediately.')) return;
+    if (!confirm('Revoke this AI key? It will stop working immediately.')) return;
     try {
-      const res = await fetch(`${API_BASE}/v1/keys/team/${teamId}/${encodeURIComponent(hash)}`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/${encodeURIComponent(hash)}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: getAuthHeaders(),
@@ -277,10 +279,10 @@ export function TeamProfile() {
         <div className="card" style={{ marginTop: '24px' }}>
           <h2 className="heading-3" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Key size={20} />
-            Team OpenRouter keys
+            Team AI Gateway keys
           </h2>
           <p style={{ color: '#555', fontSize: '15px', marginBottom: '16px' }}>
-            OpenRouter keys for this team. Use in agents or the VS Code extension for LLM access.
+            AI Gateway keys for this team. Use in agents or the VS Code extension for LLM access.
           </p>
           {createdKeyRaw && (
             <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '8px' }}>
@@ -338,14 +340,15 @@ export function TeamProfile() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{k.name}</p>
                     <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#555' }}>
-                      {k.openrouter_key_hash.slice(0, 12)}…
-                      {k.limit_usd ? ` · $${k.limit_usd} limit` : ''}
-                      {k.limit_reset ? ` · ${k.limit_reset}` : ''}
+                      {k.key_hash.slice(0, 12)}…
+                      {k.budget_usd ? ` · $${k.budget_usd} budget` : ''}
+                      {k.spend_usd ? ` · $${k.spend_usd} spent` : ''}
+                      {k.budget_reset ? ` · ${k.budget_reset}` : ''}
                     </p>
                   </div>
                   <span style={{ fontSize: '13px', color: '#666' }}>{new Date(k.created_at).toLocaleDateString()}</span>
                   {isManagerOrAdmin && (
-                    <button type="button" className="btn" onClick={() => revokeTeamKey(k.openrouter_key_hash)} style={{ color: '#dc2626' }}>
+                    <button type="button" className="btn" onClick={() => revokeTeamKey(k.key_hash)} style={{ color: '#dc2626' }}>
                       <Trash2 size={18} /> Revoke
                     </button>
                   )}
