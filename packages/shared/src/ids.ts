@@ -23,6 +23,11 @@ export function newApiToken(): string {
   return `sk_${crypto.randomUUID().replace(/-/g, '')}`;
 }
 
+/** AI Gateway virtual key: "aig_" + no-dash UUID */
+export function newAiGatewayKey(): string {
+  return `aig_${crypto.randomUUID().replace(/-/g, '')}`;
+}
+
 /** Invite token: long opaque string (two no-dash UUIDs, second truncated). */
 export function newInviteToken(): string {
   return (

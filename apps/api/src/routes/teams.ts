@@ -104,6 +104,14 @@ router.post('/teams', requireAdmin, async (c) => {
     return c.json({ error: 'Manager must belong to this customer' }, 400);
   }
 
+  // Enforce single-team membership
+  const existingMembership = await db.query.teamMembers.findFirst({
+    where: eq(teamMembers.user_id, manager_user_id),
+  });
+  if (existingMembership) {
+    return c.json({ error: 'User is already a member of another team' }, 409);
+  }
+
   const [team] = await db
     .insert(teams)
     .values({ customer_id: customer.id, name, profile_pic })

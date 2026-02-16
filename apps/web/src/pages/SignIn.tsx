@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BarChart3, Key, Zap } from 'lucide-react';
 import { SplitAuthLayout } from '../components/SplitAuthLayout';
@@ -6,9 +6,22 @@ import { getCallbackURL } from '../lib/api';
 import { authClient } from '../lib/auth-client';
 
 
+const REF_STORAGE_KEY = 'stereos_ref';
+
 export function SignIn() {
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
+
+  useEffect(() => {
+    const ref = searchParams.get('ref')?.trim();
+    if (ref) {
+      try {
+        sessionStorage.setItem(REF_STORAGE_KEY, ref);
+      } catch {
+        // ignore
+      }
+    }
+  }, [searchParams]);
 
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);

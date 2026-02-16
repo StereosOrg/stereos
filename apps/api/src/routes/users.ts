@@ -385,6 +385,14 @@ router.patch('/users/:userId/team', requireAdmin, async (c) => {
       }
     }
 
+    // Enforce single-team membership
+    const existingMembership = await db.query.teamMembers.findFirst({
+      where: eq(teamMembers.user_id, userId),
+    });
+    if (existingMembership) {
+      return c.json({ error: 'User is already a member of another team' }, 409);
+    }
+
     await db.insert(teamMembers).values({ team_id: teamId, user_id: userId });
 
     const apiKey = process.env.RESEND_API_KEY;

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, BarChart3, Key, Zap } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { SplitAuthLayout } from '../components/SplitAuthLayout';
+import { posthog } from '../lib/posthog';
 
 const titles = [
   { value: 'engineer', label: 'Engineer' },
@@ -17,8 +18,11 @@ const titles = [
   { value: 'product_manager', label: 'Product Manager' },
 ];
 
+const REF_STORAGE_KEY = 'stereos_ref';
+
 export function Onboarding() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -31,6 +35,27 @@ export function Onboarding() {
     companyName: '',
     billingEmail: '',
   });
+
+  // Fire "Onboarding Started" once on mount
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (!firedRef.current) {
+      posthog.capture('Onboarding Started');
+      firedRef.current = true;
+    }
+  }, []);
+
+  // Persist ref from URL (e.g. ?ref=ACME) so it survives sign-in redirect
+  useEffect(() => {
+    const ref = searchParams.get('ref')?.trim();
+    if (ref) {
+      try {
+        sessionStorage.setItem(REF_STORAGE_KEY, ref);
+      } catch {
+        // ignore
+      }
+    }
+  }, [searchParams]);
 
   // Fetch onboarding status to pre-fill company info for invited members
   useEffect(() => {
@@ -58,6 +83,14 @@ export function Onboarding() {
     setError('');
 
     try {
+      let ref: string | undefined;
+      try {
+        ref = sessionStorage.getItem(REF_STORAGE_KEY)?.trim() || undefined;
+        if (ref) sessionStorage.removeItem(REF_STORAGE_KEY);
+      } catch {
+        ref = undefined;
+      }
+      const payload = { ...formData, ...(ref && { ref }) };
       const response = await fetch(`${API_BASE}/v1/onboarding/complete`, {
         method: 'POST',
         headers: {
@@ -65,7 +98,7 @@ export function Onboarding() {
           ...getAuthHeaders(),
         },
         credentials: 'include',
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -74,6 +107,7 @@ export function Onboarding() {
       }
 
       await response.json();
+      posthog.capture('Onboarding Completed', { isMember });
       // Invited members skip payment setup — go to dashboard or pending page
       if (isMember) {
         navigate('/', { replace: true });

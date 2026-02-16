@@ -4,11 +4,12 @@ import {
   Home,
   CreditCard,
   Key,
-  Shield,
   Users,
   UsersRound,
   Settings,
   LogOut,
+  Cloud,
+  Shield,
 } from 'lucide-react';
 import { API_BASE, BEARER_TOKEN_KEY, getAuthHeaders } from '../lib/api';
 import { authClient } from '../lib/auth-client';
@@ -32,7 +33,8 @@ export function Layout() {
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
     ...(isAdminOrManager ? [{ path: '/keys', label: 'Keys', icon: Key }] : []),
-    ...(isAdminOrManager ? [{ path: '/guardrails', label: 'Guardrails', icon: Shield }] : []),
+    ...(isAdminOrManager ? [{ path: '/ai-gateway', label: 'AI Gateway', icon: Cloud }] : []),
+    ...(isAdminOrManager ? [{ path: '/dlp', label: 'DLP', icon: Shield }] : []),
     ...(isAdminOrManager ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },

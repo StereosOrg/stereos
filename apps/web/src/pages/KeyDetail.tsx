@@ -4,24 +4,19 @@ import { API_BASE, getAuthHeaders } from '../lib/api';
 import { Key, DollarSign, Calendar, Zap } from 'lucide-react';
 
 interface KeyDetailData {
-  key: {
-    hash: string;
-    name: string;
-    label: string;
-    disabled: boolean;
-    limit: number | null;
-    limit_remaining: number | null;
-    limit_reset: string | null;
-    usage: number;
-    usage_daily: number;
-    usage_weekly: number;
-    usage_monthly: number;
-    created_at: string;
-    updated_at: string | null;
-    expires_at: string | null;
-    user_id: string | null;
-    team_id: string | null;
-  };
+  id: string;
+  key_hash: string;
+  name: string;
+  disabled: boolean;
+  budget_usd: string | null;
+  spend_usd: string;
+  budget_remaining: number | null;
+  budget_reset: string | null;
+  allowed_models: string[] | null;
+  created_at: string;
+  spend_reset_at: string | null;
+  user: { id: string; name: string | null; email: string } | null;
+  team: { id: string; name: string } | null;
 }
 
 export function KeyDetail() {
@@ -30,7 +25,7 @@ export function KeyDetail() {
   const { data, isLoading, error } = useQuery<KeyDetailData>({
     queryKey: ['key-detail', hash],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/keys/${hash}/details`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/${hash}/details`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
@@ -86,11 +81,14 @@ export function KeyDetail() {
     );
   }
 
-  const k = data.key;
-  const scopeLabel = k.team_id ? 'Team' : k.user_id ? 'User' : '—';
-  const expiresLabel = k.expires_at
-    ? new Date(k.expires_at).toLocaleDateString(undefined, { dateStyle: 'medium' })
-    : 'No expiry';
+  const k = data;
+  const fmtUsd = (v: number) => {
+    if (v === 0) return '$0.00';
+    if (v < 0.01) return `$${v.toPrecision(2)}`;
+    return `$${v.toFixed(2)}`;
+  };
+
+  const scopeLabel = k.team ? 'Team' : k.user ? 'User' : '—';
 
   return (
     <div>
@@ -118,9 +116,6 @@ export function KeyDetail() {
           </div>
           <div style={{ flex: 1 }}>
             <h1 className="heading-1" style={{ margin: 0 }}>{k.name}</h1>
-            {k.label && k.label !== k.name && (
-              <p style={{ fontSize: '14px', color: '#555', margin: '4px 0 0' }}>{k.label}</p>
-            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
               <span
                 className="badge"
@@ -139,38 +134,33 @@ export function KeyDetail() {
 
       <div className="grid-3" style={{ marginBottom: '24px' }}>
         <StatCard
-          label="Total usage"
-          value={`$${k.usage.toFixed(2)}`}
+          label="Total spend"
+          value={fmtUsd(parseFloat(String(k.spend_usd ?? '0')))}
           icon={DollarSign}
         />
         <StatCard
-          label="Limit remaining"
-          value={k.limit_remaining != null ? `$${k.limit_remaining.toFixed(2)}` : '—'}
+          label="Budget remaining"
+          value={k.budget_remaining != null ? fmtUsd(k.budget_remaining) : '—'}
           icon={Zap}
         />
         <StatCard
-          label="Expires"
-          value={expiresLabel}
+          label="Budget"
+          value={k.budget_usd != null ? fmtUsd(parseFloat(String(k.budget_usd))) : 'Unlimited'}
           icon={Calendar}
         />
-      </div>
-
-      <div className="grid-3" style={{ marginBottom: '24px' }}>
-        <StatCard label="Usage (monthly)" value={`$${k.usage_monthly.toFixed(2)}`} />
-        <StatCard label="Usage (weekly)" value={`$${k.usage_weekly.toFixed(2)}`} />
-        <StatCard label="Usage (daily)" value={`$${k.usage_daily.toFixed(2)}`} />
       </div>
 
       <div className="card">
         <h2 className="heading-3" style={{ marginBottom: '16px' }}>Key details</h2>
         <div style={{ display: 'grid', gap: '16px' }}>
-          <DetailRow label="Hash" value={k.hash} monospace />
-          <DetailRow label="Limit" value={k.limit != null ? `$${k.limit.toFixed(2)}` : '—'} />
-          <DetailRow label="Limit reset" value={k.limit_reset ?? '—'} />
+          <DetailRow label="Key hash" value={k.key_hash} monospace />
+          <DetailRow label="Budget" value={k.budget_usd != null ? `$${parseFloat(String(k.budget_usd)).toFixed(2)}` : '—'} />
+          <DetailRow label="Budget remaining" value={k.budget_remaining != null ? `$${k.budget_remaining.toFixed(2)}` : '—'} />
+          <DetailRow label="Budget reset" value={k.budget_reset ?? '—'} />
+          <DetailRow label="Allowed models" value={k.allowed_models?.join(', ') ?? 'All models'} />
           <DetailRow label="Scope" value={scopeLabel} />
           <DetailRow label="Created" value={new Date(k.created_at).toLocaleString()} />
-          <DetailRow label="Updated" value={k.updated_at ? new Date(k.updated_at).toLocaleString() : '—'} />
-          <DetailRow label="Expires" value={k.expires_at ? new Date(k.expires_at).toLocaleString() : 'No expiry'} />
+          <DetailRow label="Spend resets" value={k.spend_reset_at ? new Date(k.spend_reset_at).toLocaleString() : '—'} />
         </div>
       </div>
     </div>

@@ -82,6 +82,7 @@ export const customers = pgTable('Customer', {
   customer_stripe_id: text('customer_stripe_id').unique().notNull(),
   company_name: text('company_name'),
   billing_email: text('billing_email'),
+  cf_gateway_id: text('cf_gateway_id').unique(),
   logo_url: text('logo_url'),
   payment_info_provided: boolean('payment_info_provided').default(false),
   payment_link_id: text('payment_link_id'),
@@ -147,6 +148,56 @@ export const usageEvents = pgTable('UsageEvent', {
   customerIdx: index('UsageEvent_customer_id_idx').on(t.customer_id),
   timeIdx: index('UsageEvent_created_at_idx').on(t.timestamp),
   idempotencyIdx: uniqueIndex('UsageEvent_idempotency_idx').on(t.customer_id, t.idempotency_key),
+}));
+
+// ── Partners & Referrals ────────────────────────────────────────────────
+
+export const partnerTierEnum = pgEnum('partner_tier', ['bronze', 'silver', 'gold']);
+export const partnerStatusEnum = pgEnum('partner_status', ['pending', 'active', 'inactive']);
+export const referralStatusEnum = pgEnum('referral_status', ['pending', 'converted', 'churned']);
+export const partnerTypeEnum = pgEnum('partner_type', ['Individual', 'Organization', 'Government Agency']);
+
+export const partners = pgTable('Partner', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  partner_code: text('partner_code').unique().notNull(),
+  tier: partnerTierEnum('tier').default('bronze').notNull(),
+  status: partnerStatusEnum('status').default('pending').notNull(),
+  audience_size: integer('audience_size'),
+  industry: text('industry'),
+  type: partnerTypeEnum('type'),
+  image_url: text('image_url'),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
+}, (t) => ({
+  partnerCodeIdx: index('Partner_partner_code_idx').on(t.partner_code),
+}));
+
+export const partnerTierConfig = pgTable('PartnerTierConfig', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tier: partnerTierEnum('tier').notNull(),
+  min_conversions: integer('min_conversions').default(0).notNull(),
+  commission_flat_usd: decimal('commission_flat_usd', { precision: 10, scale: 2 }).default('0').notNull(),
+  benefits: jsonb('benefits'),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
+}, (t) => ({
+  tierIdx: uniqueIndex('PartnerTierConfig_tier_idx').on(t.tier),
+}));
+
+export const referrals = pgTable('Referral', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  partner_id: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  referred_at: timestamp('referred_at', { withTimezone: true }).defaultNow().notNull(),
+  status: referralStatusEnum('status').default('pending').notNull(),
+  converted_at: timestamp('converted_at', { withTimezone: true }),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).$onUpdate(() => new Date()),
+}, (t) => ({
+  partnerIdx: index('Referral_partner_id_idx').on(t.partner_id),
+  customerIdx: uniqueIndex('Referral_customer_id_idx').on(t.customer_id),
 }));
 
 // ── Invites ─────────────────────────────────────────────────────────────
@@ -216,25 +267,56 @@ export const telemetrySpans = pgTable('TelemetrySpan', {
   userIdx: index('TelemetrySpan_user_id_idx').on(t.user_id),
 }));
 
-// ── OpenRouter (provisioned keys for LLM access) ───────────────────────────
+// ── DLP Events ──────────────────────────────────────────────────────────
 
-export const openrouterKeyLimitResetEnum = pgEnum('openrouter_key_limit_reset', ['daily', 'weekly', 'monthly']);
+export const dlpSeverityEnum = pgEnum('dlp_severity', ['flag', 'block']);
 
-export const openrouterKeys = pgTable('OpenRouterKey', {
+export const dlpEvents = pgTable('DlpEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  gateway_id: text('gateway_id').notNull(),
+  request_id: text('request_id').notNull(),
+  timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
+  model: text('model'),
+  provider: text('provider'),
+  prompt_excerpt: text('prompt_excerpt'),
+  response_excerpt: text('response_excerpt'),
+  topic: text('topic'),
+  summary: text('summary'),
+  dlp_profile_matches: jsonb('dlp_profile_matches').notNull().default([]).$type<Array<{ profile_id: string; profile_name: string; matched_entries: string[] }>>(),
+  severity: dlpSeverityEnum('severity').notNull().default('flag'),
+  raw_payload: jsonb('raw_payload'),
+  ingested_at: timestamp('ingested_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  customerIdx: index('DlpEvent_customer_id_idx').on(t.customer_id),
+  timestampIdx: index('DlpEvent_timestamp_idx').on(t.timestamp),
+  gatewayIdx: index('DlpEvent_gateway_id_idx').on(t.gateway_id),
+  customerTimestampIdx: index('DlpEvent_customer_timestamp_idx').on(t.customer_id, t.timestamp),
+}));
+
+// ── AI Gateway (Cloudflare) ─────────────────────────────────────────────
+
+export const aiGatewayKeyBudgetResetEnum = pgEnum('ai_gateway_key_budget_reset', ['daily', 'weekly', 'monthly']);
+
+export const aiGatewayKeys = pgTable('AiGatewayKey', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   team_id: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
-  openrouter_key_hash: text('openrouter_key_hash').notNull().unique(),
+  key_hash: text('key_hash').notNull().unique(),
   name: text('name').notNull(),
-  limit_usd: decimal('limit_usd', { precision: 10, scale: 4 }),
-  limit_reset: openrouterKeyLimitResetEnum('limit_reset'),
+  budget_usd: decimal('budget_usd', { precision: 10, scale: 4 }),
+  budget_reset: aiGatewayKeyBudgetResetEnum('budget_reset'),
+  spend_usd: decimal('spend_usd', { precision: 10, scale: 4 }).default('0').notNull(),
+  spend_reset_at: timestamp('spend_reset_at', { withTimezone: true }),
+  allowed_models: jsonb('allowed_models').$type<string[]>(),
+  disabled: boolean('disabled').default(false).notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   created_by_user_id: text('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
 }, (t) => ({
-  customerIdx: index('OpenRouterKey_customer_id_idx').on(t.customer_id),
-  userIdx: index('OpenRouterKey_user_id_idx').on(t.user_id),
-  teamIdx: index('OpenRouterKey_team_id_idx').on(t.team_id),
+  customerIdx: index('AiGatewayKey_customer_id_idx').on(t.customer_id),
+  userIdx: index('AiGatewayKey_user_id_idx').on(t.user_id),
+  teamIdx: index('AiGatewayKey_team_id_idx').on(t.team_id),
 }));
 
 export const telemetryMetrics = pgTable('TelemetryMetric', {
@@ -304,13 +386,24 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
   invites: many(invites),
   toolProfiles: many(toolProfiles),
   telemetrySpans: many(telemetrySpans),
-  openrouterKeys: many(openrouterKeys),
+  aiGatewayKeys: many(aiGatewayKeys),
+  dlpEvents: many(dlpEvents),
+  referrals: many(referrals),
 }));
 
-export const openrouterKeysRelations = relations(openrouterKeys, ({ one }) => ({
-  customer: one(customers, { fields: [openrouterKeys.customer_id], references: [customers.id] }),
-  user: one(users, { fields: [openrouterKeys.user_id], references: [users.id] }),
-  team: one(teams, { fields: [openrouterKeys.team_id], references: [teams.id] }),
+export const partnersRelations = relations(partners, ({ many }) => ({
+  referrals: many(referrals),
+}));
+
+export const referralsRelations = relations(referrals, ({ one }) => ({
+  partner: one(partners, { fields: [referrals.partner_id], references: [partners.id] }),
+  customer: one(customers, { fields: [referrals.customer_id], references: [customers.id] }),
+}));
+
+export const aiGatewayKeysRelations = relations(aiGatewayKeys, ({ one }) => ({
+  customer: one(customers, { fields: [aiGatewayKeys.customer_id], references: [customers.id] }),
+  user: one(users, { fields: [aiGatewayKeys.user_id], references: [users.id] }),
+  team: one(teams, { fields: [aiGatewayKeys.team_id], references: [teams.id] }),
 }));
 
 export const invitesRelations = relations(invites, ({ one }) => ({
@@ -334,9 +427,16 @@ export const telemetryMetricsRelations = relations(telemetryMetrics, ({ one }) =
   toolProfile: one(toolProfiles, { fields: [telemetryMetrics.tool_profile_id], references: [toolProfiles.id] }),
 }));
 
+export const dlpEventsRelations = relations(dlpEvents, ({ one }) => ({
+  customer: one(customers, { fields: [dlpEvents.customer_id], references: [customers.id] }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
+export type Partner = typeof partners.$inferSelect;
+export type Referral = typeof referrals.$inferSelect;
 export type ToolProfile = typeof toolProfiles.$inferSelect;
 export type TelemetrySpan = typeof telemetrySpans.$inferSelect;
 export type TelemetryMetric = typeof telemetryMetrics.$inferSelect;
-export type OpenRouterKey = typeof openrouterKeys.$inferSelect;
+export type AiGatewayKey = typeof aiGatewayKeys.$inferSelect;
+export type DlpEvent = typeof dlpEvents.$inferSelect;

@@ -245,7 +245,7 @@ export function TeamProfile() {
                   <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
                     {d.vendor} · {new Date(d.start_time).toLocaleString()}
                   </div>
-                  <Link to={`/diffs/${d.id}`} style={{ fontSize: '12px' }}>View diff</Link>
+                  <Link to={`/spans/${d.id}`} style={{ fontSize: '12px' }}>View span</Link>
                 </div>
               ))}
             </div>
@@ -260,14 +260,14 @@ export function TeamProfile() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {recent_spans.map((s) => (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)' }}>
+              <Link key={s.id} to={`/spans/${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', textDecoration: 'none', color: 'inherit' }}>
                 <VendorIcon vendor={s.vendor} displayName={s.vendor} size={28} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600 }}>{s.intent}</div>
                   <div style={{ fontSize: '12px', color: '#666' }}>{s.vendor}{s.model ? ` · ${s.model}` : ''}</div>
                 </div>
                 <div style={{ fontSize: '12px', color: '#666' }}>{new Date(s.timestamp).toLocaleString()}</div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

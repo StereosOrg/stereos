@@ -2,25 +2,32 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
+import { posthog } from '../lib/posthog';
 import { Key, UserPlus, UsersRound, X, Trash2 } from 'lucide-react';
+
+const OPENAI_LOGO = 'https://images.seeklogo.com/logo-png/42/2/open-ai-logo-png_seeklogo-428036.png';
+const ANTHROPIC_LOGO = 'https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/1/anthropic-icon-wii9u8ifrjrd99btrqfgi.png/anthropic-icon-tdvkiqisswbrmtkiygb0ia.png';
+
+function getModelLogo(model: string): string {
+  if (model.startsWith('claude')) return ANTHROPIC_LOGO;
+  return OPENAI_LOGO;
+}
 
 interface KeyItem {
   id: string;
-  openrouter_key_hash: string;
+  key_hash: string;
   name: string;
   user_id: string | null;
   team_id: string | null;
   user_email: string | null;
   user_name: string | null;
   team_name: string | null;
-  limit_usd: string | null;
-  limit_reset: string | null;
+  budget_usd: number | null;
+  spend_usd: number;
+  budget_reset: string | null;
   created_at: string;
-  limit?: number | null;
-  limit_remaining?: number | null;
-  usage_daily?: number;
-  usage_monthly?: number;
-  disabled?: boolean;
+  disabled: boolean;
+  allowed_models: string[] | null;
 }
 
 interface User {
@@ -41,6 +48,8 @@ export function KeyManagement() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [keyName, setKeyName] = useState('');
+  const [budgetUsd, setBudgetUsd] = useState<string>('');
+  const [allowedModels, setAllowedModels] = useState<string[]>([]);
   const [creatingKey, setCreatingKey] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createdKeyRaw, setCreatedKeyRaw] = useState<string | null>(null);
@@ -87,10 +96,23 @@ export function KeyManagement() {
     enabled: isAdminOrManager && modalType === 'team',
   });
 
+  const { data: modelsData } = useQuery<{ models: string[] }>({
+    queryKey: ['ai-models'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/ai/models`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error('Failed to fetch models');
+      return res.json();
+    },
+    enabled: isAdminOrManager,
+  });
+
   const { data, isLoading, error } = useQuery<{ keys: KeyItem[] }>({
     queryKey: ['keys-customer'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/keys/customer`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/customer`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
@@ -139,7 +161,8 @@ export function KeyManagement() {
   }
 
   const keys = data?.keys ?? [];
-  const totalMonthlyUsage = keys.reduce((sum, k) => sum + (k.usage_monthly ?? 0), 0);
+  const totalMonthlySpend = keys.reduce((sum, k) => sum + parseFloat(String(k.spend_usd ?? '0')), 0);
+  const models = modelsData?.models ?? [];
   const users = usersData?.users ?? [];
   const teams = teamsData?.teams ?? [];
   const customerId = customerData?.customer?.id;
@@ -148,6 +171,8 @@ export function KeyManagement() {
     setModalType('user');
     setSelectedUserId('');
     setKeyName('');
+    setBudgetUsd('');
+    setAllowedModels([]);
     setCreateError('');
     setCreatedKeyRaw(null);
   };
@@ -156,12 +181,17 @@ export function KeyManagement() {
     setModalType('team');
     setSelectedTeamId('');
     setKeyName('');
+    setBudgetUsd('');
+    setAllowedModels([]);
     setCreateError('');
     setCreatedKeyRaw(null);
   };
 
   const closeModal = () => {
     setModalType(null);
+    setKeyName('');
+    setBudgetUsd('');
+    setAllowedModels([]);
     setCreateError('');
     setCreatedKeyRaw(null);
   };
@@ -172,20 +202,34 @@ export function KeyManagement() {
     setCreateError('');
     setCreatedKeyRaw(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/keys/user`, {
+      const body: Record<string, unknown> = {
+        name: keyName.trim(),
+        customer_id: customerId,
+        user_id: selectedUserId,
+      };
+      if (budgetUsd) body.budget_usd = budgetUsd;
+      if (allowedModels.length > 0) body.allowed_models = allowedModels;
+
+      const res = await fetch(`${API_BASE}/v1/ai/keys/user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
-        body: JSON.stringify({
-          name: keyName.trim(),
-          customer_id: customerId,
-          user_id: selectedUserId,
-        }),
+        body: JSON.stringify(body),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Failed to create key');
+      const selectedUser = users.find((u) => u.id === selectedUserId);
+      posthog.capture('Key Created', {
+        type: 'user',
+        key_name: keyName.trim(),
+        user_id: selectedUserId,
+        user_email: selectedUser?.email,
+        user_name: selectedUser?.name,
+      });
       setCreatedKeyRaw(result.key ?? null);
       setKeyName('');
+      setBudgetUsd('');
+      setAllowedModels([]);
       setSelectedUserId('');
       queryClient.invalidateQueries({ queryKey: ['keys-customer'] });
     } catch (e) {
@@ -198,7 +242,7 @@ export function KeyManagement() {
   const deleteKey = async (hash: string) => {
     if (!confirm('Delete this key? It will stop working immediately.')) return;
     try {
-      const res = await fetch(`${API_BASE}/v1/keys/${encodeURIComponent(hash)}`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/${encodeURIComponent(hash)}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: getAuthHeaders(),
@@ -217,16 +261,32 @@ export function KeyManagement() {
     setCreateError('');
     setCreatedKeyRaw(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/keys/team/${selectedTeamId}`, {
+      const body: Record<string, unknown> = {
+        name: keyName.trim(),
+        customer_id: customerId,
+      };
+      if (budgetUsd) body.budget_usd = budgetUsd;
+      if (allowedModels.length > 0) body.allowed_models = allowedModels;
+
+      const res = await fetch(`${API_BASE}/v1/ai/keys/team/${selectedTeamId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
-        body: JSON.stringify({ name: keyName.trim() }),
+        body: JSON.stringify(body),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Failed to create key');
+      const selectedTeam = teams.find((t) => t.id === selectedTeamId);
+      posthog.capture('Key Created', {
+        type: 'team',
+        key_name: keyName.trim(),
+        team_id: selectedTeamId,
+        team_name: selectedTeam?.name,
+      });
       setCreatedKeyRaw(result.key ?? null);
       setKeyName('');
+      setBudgetUsd('');
+      setAllowedModels([]);
       setSelectedTeamId('');
       queryClient.invalidateQueries({ queryKey: ['keys-customer'] });
     } catch (e) {
@@ -243,7 +303,7 @@ export function KeyManagement() {
           Key provisioning
         </h1>
         <p style={{ color: '#555', fontSize: '16px' }}>
-          Manage inference keys for users and teams. Keys are used in agents or the VS Code extension for LLM access. Use <Link to="/guardrails" style={{ color: 'var(--accent-blue)', textDecoration: 'underline' }}>Guardrails</Link> to limit which models keys can use.
+          Manage AI inference keys for users and teams. Keys are used in agents or the VS Code extension for LLM access.
         </p>
       </div>
 
@@ -350,6 +410,11 @@ export function KeyManagement() {
           setSelectedUserId={setSelectedUserId}
           keyName={keyName}
           setKeyName={setKeyName}
+          budgetUsd={budgetUsd}
+          setBudgetUsd={setBudgetUsd}
+          allowedModels={allowedModels}
+          setAllowedModels={setAllowedModels}
+          models={models}
           creatingKey={creatingKey}
           createError={createError}
           createdKeyRaw={createdKeyRaw}
@@ -365,6 +430,11 @@ export function KeyManagement() {
           setSelectedTeamId={setSelectedTeamId}
           keyName={keyName}
           setKeyName={setKeyName}
+          budgetUsd={budgetUsd}
+          setBudgetUsd={setBudgetUsd}
+          allowedModels={allowedModels}
+          setAllowedModels={setAllowedModels}
+          models={models}
           creatingKey={creatingKey}
           createError={createError}
           createdKeyRaw={createdKeyRaw}
@@ -390,21 +460,19 @@ export function KeyManagement() {
             </span>
             <p style={{ margin: '4px 0 0', fontSize: '24px', fontWeight: 700 }}>{keys.length}</p>
           </div>
-          {totalMonthlyUsage > 0 && (
-            <div
-              className="card"
-              style={{
-                padding: '16px 24px',
-                background: 'var(--bg-cream)',
-                border: '1px solid var(--border-default)',
-              }}
-            >
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Monthly usage
-              </span>
-              <p style={{ margin: '4px 0 0', fontSize: '24px', fontWeight: 700 }}>${totalMonthlyUsage.toFixed(2)}</p>
-            </div>
-          )}
+          <div
+            className="card"
+            style={{
+              padding: '16px 24px',
+              background: 'var(--bg-cream)',
+              border: '1px solid var(--border-default)',
+            }}
+          >
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Monthly spend
+            </span>
+            <p style={{ margin: '4px 0 0', fontSize: '24px', fontWeight: 700 }}>${totalMonthlySpend.toFixed(2)}</p>
+          </div>
         </div>
       )}
 
@@ -436,13 +504,13 @@ export function KeyManagement() {
                   <tr key={k.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '14px 16px' }}>
                       <Link
-                        to={`/keys/${k.openrouter_key_hash}`}
+                        to={`/keys/${k.key_hash}`}
                         style={{ fontWeight: 600, textDecoration: 'none', color: 'inherit' }}
                       >
                         {k.name}
                       </Link>
                       <div style={{ fontSize: '12px', color: '#666', fontFamily: 'monospace', marginTop: '2px' }}>
-                        {k.openrouter_key_hash.slice(0, 16)}…
+                        {k.key_hash.slice(0, 16)}…
                       </div>
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px' }}>
@@ -459,7 +527,12 @@ export function KeyManagement() {
                       )}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px' }}>
-                      {k.usage_monthly != null ? `$${k.usage_monthly.toFixed(2)}/mo` : '—'}
+                      <div>${parseFloat(String(k.spend_usd ?? '0')).toFixed(2)}</div>
+                      {k.budget_usd != null && (
+                        <div style={{ fontSize: '11px', color: '#666' }}>
+                          of ${parseFloat(String(k.budget_usd)).toFixed(2)} budget
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '14px 16px' }}>
                       <span
@@ -480,7 +553,7 @@ export function KeyManagement() {
                       <button
                         type="button"
                         className="btn"
-                        onClick={() => deleteKey(k.openrouter_key_hash)}
+                        onClick={() => deleteKey(k.key_hash)}
                         style={{ color: '#dc2626', padding: '6px 10px' }}
                       >
                         <Trash2 size={16} />
@@ -503,6 +576,11 @@ function ProvisionUserModal({
   setSelectedUserId,
   keyName,
   setKeyName,
+  budgetUsd,
+  setBudgetUsd,
+  allowedModels,
+  setAllowedModels,
+  models,
   creatingKey,
   createError,
   createdKeyRaw,
@@ -515,6 +593,11 @@ function ProvisionUserModal({
   setSelectedUserId: (v: string) => void;
   keyName: string;
   setKeyName: (v: string) => void;
+  budgetUsd: string;
+  setBudgetUsd: (v: string) => void;
+  allowedModels: string[];
+  setAllowedModels: (v: string[]) => void;
+  models: string[];
   creatingKey: boolean;
   createError: string;
   createdKeyRaw: string | null;
@@ -522,6 +605,14 @@ function ProvisionUserModal({
   onCreate: () => void;
   canCreate: boolean;
 }) {
+  const toggleModel = (model: string) => {
+    if (allowedModels.includes(model)) {
+      setAllowedModels(allowedModels.filter((m) => m !== model));
+    } else {
+      setAllowedModels([...allowedModels, model]);
+    }
+  };
+
   return (
     <div
       style={{
@@ -538,14 +629,14 @@ function ProvisionUserModal({
     >
       <div
         className="card"
-        style={{ maxWidth: '420px', width: '100%', maxHeight: '90vh', overflow: 'auto' }}
+        style={{ maxWidth: '480px', width: '100%', maxHeight: '90vh', overflow: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div>
             <h2 className="heading-3" style={{ margin: 0 }}>Provision key for user</h2>
             <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#555' }}>
-              Create an  key for a user. They will see it in Settings.
+              Create an AI inference key for a user. They will see it in Settings.
             </p>
           </div>
           <button
@@ -597,6 +688,43 @@ function ProvisionUserModal({
                 style={{ width: '100%' }}
               />
             </div>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
+                Budget (USD) <span style={{ fontWeight: 400, color: '#666' }}>— optional</span>
+              </label>
+              <input
+                type="number"
+                className="input"
+                value={budgetUsd}
+                onChange={(e) => setBudgetUsd(e.target.value)}
+                placeholder="e.g. 100"
+                disabled={creatingKey}
+                style={{ width: '100%' }}
+                min="0"
+                step="0.01"
+              />
+            </div>
+            {models.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
+                  Allowed models <span style={{ fontWeight: 400, color: '#666' }}>— optional (leave empty for all)</span>
+                </label>
+                <div style={{ maxHeight: '150px', overflow: 'auto', border: '1px solid var(--border-default)', borderRadius: '6px', padding: '8px' }}>
+                  {models.map((model) => (
+                    <label key={model} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={allowedModels.includes(model)}
+                        onChange={() => toggleModel(model)}
+                        disabled={creatingKey}
+                      />
+                      <img src={getModelLogo(model)} alt="" style={{ width: '16px', height: '16px', borderRadius: '3px', objectFit: 'contain' }} />
+                      <span style={{ fontSize: '13px' }}>{model}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             {createError && <p style={{ color: '#dc2626', fontWeight: 600, marginBottom: '12px', fontSize: '14px' }}>{createError}</p>}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="button" className="btn btn-primary" disabled={creatingKey || !canCreate} onClick={onCreate}>
@@ -617,6 +745,11 @@ function ProvisionTeamModal({
   setSelectedTeamId,
   keyName,
   setKeyName,
+  budgetUsd,
+  setBudgetUsd,
+  allowedModels,
+  setAllowedModels,
+  models,
   creatingKey,
   createError,
   createdKeyRaw,
@@ -629,6 +762,11 @@ function ProvisionTeamModal({
   setSelectedTeamId: (v: string) => void;
   keyName: string;
   setKeyName: (v: string) => void;
+  budgetUsd: string;
+  setBudgetUsd: (v: string) => void;
+  allowedModels: string[];
+  setAllowedModels: (v: string[]) => void;
+  models: string[];
   creatingKey: boolean;
   createError: string;
   createdKeyRaw: string | null;
@@ -636,6 +774,14 @@ function ProvisionTeamModal({
   onCreate: () => void;
   canCreate: boolean;
 }) {
+  const toggleModel = (model: string) => {
+    if (allowedModels.includes(model)) {
+      setAllowedModels(allowedModels.filter((m) => m !== model));
+    } else {
+      setAllowedModels([...allowedModels, model]);
+    }
+  };
+
   return (
     <div
       style={{
@@ -652,14 +798,14 @@ function ProvisionTeamModal({
     >
       <div
         className="card"
-        style={{ maxWidth: '420px', width: '100%', maxHeight: '90vh', overflow: 'auto' }}
+        style={{ maxWidth: '480px', width: '100%', maxHeight: '90vh', overflow: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div>
             <h2 className="heading-3" style={{ margin: 0 }}>Provision key for team</h2>
             <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#555' }}>
-              Create an inference key for a team. Team members will see it in Settings.
+              Create an AI inference key for a team. Team members will see it in Settings.
             </p>
           </div>
           <button
@@ -709,6 +855,43 @@ function ProvisionTeamModal({
                 style={{ width: '100%' }}
               />
             </div>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
+                Budget (USD) <span style={{ fontWeight: 400, color: '#666' }}>— optional</span>
+              </label>
+              <input
+                type="number"
+                className="input"
+                value={budgetUsd}
+                onChange={(e) => setBudgetUsd(e.target.value)}
+                placeholder="e.g. 100"
+                disabled={creatingKey}
+                style={{ width: '100%' }}
+                min="0"
+                step="0.01"
+              />
+            </div>
+            {models.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
+                  Allowed models <span style={{ fontWeight: 400, color: '#666' }}>— optional (leave empty for all)</span>
+                </label>
+                <div style={{ maxHeight: '150px', overflow: 'auto', border: '1px solid var(--border-default)', borderRadius: '6px', padding: '8px' }}>
+                  {models.map((model) => (
+                    <label key={model} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={allowedModels.includes(model)}
+                        onChange={() => toggleModel(model)}
+                        disabled={creatingKey}
+                      />
+                      <img src={getModelLogo(model)} alt="" style={{ width: '16px', height: '16px', borderRadius: '3px', objectFit: 'contain' }} />
+                      <span style={{ fontSize: '13px' }}>{model}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             {createError && <p style={{ color: '#dc2626', fontWeight: 600, marginBottom: '12px', fontSize: '14px' }}>{createError}</p>}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="button" className="btn btn-primary" disabled={creatingKey || !canCreate} onClick={onCreate}>

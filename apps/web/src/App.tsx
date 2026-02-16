@@ -18,8 +18,10 @@ import { Billing } from './pages/Billing';
 import { IndividualProfile } from './pages/IndividualProfile';
 import { KeyDetail } from './pages/KeyDetail';
 import { KeyManagement } from './pages/KeyManagement';
-import { Guardrails } from './pages/Guardrails';
-import { DiffDetail } from './pages/DiffDetail';
+import { AIGateway } from './pages/AIGateway';
+import { DLP } from './pages/DLP';
+
+import { SpanDetail } from './pages/SpanDetail';
 import { TeamProfile } from './pages/TeamProfile';
 import { Teams } from './pages/Teams';
 
@@ -55,10 +57,12 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="keys/:hash" element={<KeyDetail />} />
         <Route path="keys" element={<KeyManagement />} />
-        <Route path="guardrails" element={<Guardrails />} />
+        <Route path="ai-gateway" element={<AIGateway />} />
+        <Route path="dlp" element={<DLP />} />
+        
         <Route path="billing" element={<Billing />} />
         <Route path="individual-profile" element={<IndividualProfile />} />
-        <Route path="diffs/:spanId" element={<DiffDetail />} />
+        <Route path="spans/:spanId" element={<SpanDetail />} />
         <Route path="teams" element={<Teams />} />
         <Route path="teams/:teamId" element={<TeamProfile />} />
         <Route path="settings" element={<Settings />} />

@@ -1,69 +1,20 @@
 import { Hono } from 'hono';
-import { toolProfiles, telemetrySpans, telemetryMetrics, users, customers, teamMembers, teams } from '@stereos/shared/schema';
+import { toolProfiles, telemetrySpans, telemetryMetrics, users } from '@stereos/shared/schema';
 import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import { getCurrentUser } from '../lib/middleware.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
-import { canonicalizeVendor, flattenOtelAttributes } from '../lib/vendor-map.js';
-import { trackTelemetryEventsUsage, trackToolProfilesUsage } from '../lib/stripe.js';
+import { ingestOtelSpans } from '../lib/telemetry-ingest.js';
 import type { AppVariables } from '../types/app.js';
-import type { Database } from '@stereos/shared/db';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
-/** Resolve customer_id for a Stereos user_id. OpenRouter sends user.id in span attributes when client passes user in request. */
-async function resolveCustomerForUserId(db: Database, userId: string): Promise<string | null> {
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-    columns: { customer_id: true },
-  });
-  if (user?.customer_id) return user.customer_id;
-  const owner = await db.query.customers.findFirst({
-    where: eq(customers.user_id, userId),
-    columns: { id: true },
-  });
-  return owner?.id ?? null;
-}
-
-/** Resolve team_id from trace attributes or user's team membership. Validates that team belongs to customer and user is a member. */
-async function resolveTeamId(
-  db: Database,
-  customerId: string,
-  userId: string,
-  traceTeamId: string | null
-): Promise<string | null> {
-  if (traceTeamId?.trim()) {
-    const team = await db.query.teams.findFirst({
-      where: and(eq(teams.id, traceTeamId), eq(teams.customer_id, customerId)),
-      columns: { id: true },
-    });
-    if (team) {
-      const member = await db.query.teamMembers.findFirst({
-        where: and(eq(teamMembers.team_id, team.id), eq(teamMembers.user_id, userId)),
-        columns: { team_id: true },
-      });
-      if (member) return team.id;
-    }
-  }
-  const membership = await db.query.teamMembers.findFirst({
-    where: eq(teamMembers.user_id, userId),
-    columns: { team_id: true },
-  });
-  if (membership) {
-    const team = await db.query.teams.findFirst({
-      where: and(eq(teams.id, membership.team_id), eq(teams.customer_id, customerId)),
-      columns: { id: true },
-    });
-    if (team) return team.id;
-  }
-  return null;
-}
-
-/** Middleware: require OpenRouter Broadcast secret (Authorization: Bearer OPENROUTER_BROADCAST_SECRET). */
-async function openRouterBroadcastAuth(c: any, next: any) {
-  const secret = (c.env ?? process.env)?.OPENROUTER_BROADCAST_SECRET;
+/** Middleware: require trace ingest secret (Authorization: Bearer TRACE_INGEST_SECRET or OPENROUTER_BROADCAST_SECRET). */
+async function traceIngestAuth(c: any, next: any) {
+  const env = c.env ?? process.env;
+  const secret = env?.TRACE_INGEST_SECRET ?? env?.OPENROUTER_BROADCAST_SECRET;
   if (!secret) {
-    return c.json({ error: 'OpenRouter Broadcast not configured' }, 503);
+    return c.json({ error: 'Trace ingest not configured' }, 503);
   }
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -76,16 +27,14 @@ async function openRouterBroadcastAuth(c: any, next: any) {
   return next();
 }
 
-// ── Pre-flight for OpenRouter Broadcast / OTLP ───────────────────────────
+// ── Pre-flight for OTLP trace ingestion ───────────────────────────────
 router.on(['HEAD', 'OPTIONS'], '/traces', (c) => c.body(null, 200));
 
-// ── OTLP Ingestion: Traces (OpenRouter Broadcast only) ───────────────────
-// Configure OpenRouter Settings > Observability > OpenTelemetry Collector:
+// ── OTLP Ingestion: Traces ───────────────────────────────────────────
 // Endpoint: https://api.trystereos.com/v1/traces
-// Headers: { "Authorization": "Bearer <OPENROUTER_BROADCAST_SECRET>" }
-// Enable Privacy Mode to exclude prompt/completion; span attributes include user.id when client passes user in request.
+// Headers: { "Authorization": "Bearer <TRACE_INGEST_SECRET>" }
 
-router.post('/traces', openRouterBroadcastAuth, async (c) => {
+router.post('/traces', traceIngestAuth, async (c) => {
   const db = c.get('db');
 
   let body: any;
@@ -100,172 +49,13 @@ router.post('/traces', openRouterBroadcastAuth, async (c) => {
     return c.json({ error: 'Missing resourceSpans array' }, 400);
   }
 
-  // Extract user.id and team.id from spans or resource attributes; resolve to customer and team
-  // OpenRouter maps request "user" to user.id; pass team_id in trace.metadata for team attribution
-  const USER_ATTR_KEYS = ['user.id', 'user_id', 'trace.metadata.user.id', 'trace.metadata.user_id'];
-  const TEAM_ATTR_KEYS = ['team.id', 'team_id', 'trace.metadata.team.id', 'trace.metadata.team_id'];
-  function extractUserId(attrs: Record<string, string>): string | null {
-    for (const k of USER_ATTR_KEYS) {
-      const v = attrs[k]?.trim();
-      if (v) return v;
-    }
-    return null;
+  try {
+    const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+    const result = await ingestOtelSpans(db, body, stripeKey);
+    return c.json({ partialSuccess: result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
   }
-  function extractTeamId(attrs: Record<string, string>): string | null {
-    for (const k of TEAM_ATTR_KEYS) {
-      const v = attrs[k]?.trim();
-      if (v) return v;
-    }
-    return null;
-  }
-
-  let customerId: string | null = null;
-  let userId: string | null = null;
-  let traceTeamId: string | null = null;
-  for (const rs of resourceSpans) {
-    const resourceAttrs = flattenOtelAttributes(rs.resource?.attributes);
-    userId = extractUserId(resourceAttrs);
-    traceTeamId = traceTeamId ?? extractTeamId(resourceAttrs);
-    if (!userId) {
-      for (const ss of rs.scopeSpans || []) {
-        for (const span of ss.spans || []) {
-          const spanAttrs = flattenOtelAttributes(span.attributes);
-          userId = userId ?? extractUserId(spanAttrs);
-          traceTeamId = traceTeamId ?? extractTeamId(spanAttrs);
-          if (userId) break;
-        }
-        if (userId) break;
-      }
-    }
-    if (userId) {
-      customerId = await resolveCustomerForUserId(db, userId);
-      if (customerId) break;
-    }
-  }
-  if (!customerId || !userId) {
-    return c.json({
-      error: 'Unable to attribute traces - OpenRouter requests must include user (Stereos user_id) in request body',
-    }, 400);
-  }
-
-  const teamId = await resolveTeamId(db, customerId, userId, traceTeamId);
-
-  const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
-  const existingVendors = new Set(
-    (await db.select({ vendor: toolProfiles.vendor }).from(toolProfiles).where(eq(toolProfiles.customer_id, customerId))).map((r) => r.vendor)
-  );
-
-  let totalInserted = 0;
-  let totalErrors = 0;
-  const traceIds = new Set<string>();
-
-  for (const rs of resourceSpans) {
-    const resourceAttrs = flattenOtelAttributes(rs.resource?.attributes);
-    const vendor = canonicalizeVendor(resourceAttrs);
-    const serviceName = resourceAttrs['service.name'] || null;
-
-    // Upsert ToolProfile
-    const now = new Date();
-    const scopeSpans = rs.scopeSpans || [];
-    let spanCount = 0;
-    let errorCount = 0;
-
-    const spanRows: Array<typeof telemetrySpans.$inferInsert> = [];
-
-    for (const ss of scopeSpans) {
-      const spans = ss.spans || [];
-      for (const span of spans) {
-        spanCount++;
-        const spanAttrs = flattenOtelAttributes(span.attributes);
-        spanAttrs['user.id'] = userId;
-        if (teamId) spanAttrs['team.id'] = teamId;
-        const startNano = span.startTimeUnixNano ? BigInt(span.startTimeUnixNano) : BigInt(0);
-        const endNano = span.endTimeUnixNano ? BigInt(span.endTimeUnixNano) : BigInt(0);
-        const startTime = new Date(Number(startNano / BigInt(1_000_000)));
-        const endTime = endNano ? new Date(Number(endNano / BigInt(1_000_000))) : null;
-        const durationMs = endNano && startNano ? Number((endNano - startNano) / BigInt(1_000_000)) : null;
-        const statusCode = span.status?.code === 2 ? 'ERROR' : span.status?.code === 1 ? 'OK' : 'UNSET';
-        if (statusCode === 'ERROR') errorCount++;
-
-        const traceId = span.traceId || '';
-        traceIds.add(traceId);
-
-        // Map span kind number to string
-        const SPAN_KINDS = ['UNSPECIFIED', 'INTERNAL', 'SERVER', 'CLIENT', 'PRODUCER', 'CONSUMER'];
-        const spanKind = SPAN_KINDS[span.kind ?? 0] || 'UNSPECIFIED';
-
-        spanRows.push({
-          customer_id: customerId,
-          user_id: userId,
-          team_id: teamId,
-          trace_id: traceId,
-          span_id: span.spanId || '',
-          parent_span_id: span.parentSpanId || null,
-          span_name: span.name || 'unknown',
-          span_kind: spanKind,
-          start_time: startTime,
-          end_time: endTime,
-          duration_ms: durationMs,
-          status_code: statusCode,
-          status_message: span.status?.message || null,
-          vendor: vendor.slug,
-          service_name: serviceName,
-          resource_attributes: resourceAttrs,
-          span_attributes: spanAttrs,
-          signal_type: 'trace',
-        });
-      }
-    }
-
-    if (spanRows.length === 0) continue;
-
-    const [profile] = await db
-      .insert(toolProfiles)
-      .values({
-        customer_id: customerId,
-        vendor: vendor.slug,
-        display_name: vendor.displayName,
-        vendor_category: vendor.category,
-        total_spans: spanCount,
-        total_traces: traceIds.size,
-        total_errors: errorCount,
-        first_seen_at: now,
-        last_seen_at: now,
-      })
-      .onConflictDoUpdate({
-        target: [toolProfiles.customer_id, toolProfiles.vendor],
-        set: {
-          display_name: vendor.displayName,
-          vendor_category: vendor.category,
-          total_spans: sql`"ToolProfile"."total_spans" + ${spanCount}`,
-          total_traces: sql`"ToolProfile"."total_traces" + ${traceIds.size}`,
-          total_errors: sql`"ToolProfile"."total_errors" + ${errorCount}`,
-          last_seen_at: now,
-          updated_at: now,
-        },
-      })
-      .returning({ id: toolProfiles.id });
-
-    for (const row of spanRows) {
-      row.tool_profile_id = profile.id;
-    }
-    await db.insert(telemetrySpans).values(spanRows);
-    totalInserted += spanRows.length;
-    totalErrors += errorCount;
-
-    if (!existingVendors.has(vendor.slug)) {
-      existingVendors.add(vendor.slug);
-      await trackToolProfilesUsage(db, customerId, 1, { tool_profile_id: profile.id }, stripeKey);
-    }
-  }
-
-  if (totalInserted > 0) {
-    await trackTelemetryEventsUsage(db, customerId, totalInserted, {
-      trace_count: traceIds.size,
-    }, stripeKey);
-  }
-
-  return c.json({ partialSuccess: { rejectedSpans: 0, acceptedSpans: totalInserted } });
 });
 
 // ── Read: Tool Profiles ─────────────────────────────────────────────────
@@ -374,7 +164,7 @@ router.get('/tool-profiles/:profileId/spans', sessionOrTokenAuth, async (c) => {
   return c.json({ spans, limit, offset });
 });
 
-// GET /v1/spans/:spanId - Get a single span (for diff drilldown)
+// GET /v1/spans/:spanId - Get a single span detail
 router.get('/spans/:spanId', sessionOrTokenAuth, async (c) => {
   const apiToken = c.get('apiToken') as ApiTokenPayload;
   const db = c.get('db');
@@ -383,13 +173,6 @@ router.get('/spans/:spanId', sessionOrTokenAuth, async (c) => {
 
   const span = await db.query.telemetrySpans.findFirst({
     where: and(eq(telemetrySpans.id, spanId), eq(telemetrySpans.customer_id, customerId)),
-    columns: {
-      id: true,
-      vendor: true,
-      span_name: true,
-      start_time: true,
-      span_attributes: true,
-    },
   });
 
   if (!span) return c.json({ error: 'Span not found' }, 404);

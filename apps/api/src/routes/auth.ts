@@ -7,6 +7,8 @@ import { sessionOrTokenAuth } from '../lib/api-token.js';
 import { getCustomerForUser } from '../lib/middleware.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
 import type { AppVariables } from '../types/app.js';
+import { getPostHog } from '../lib/posthog.js';
+import { createCfGateway } from '../lib/cloudflare-ai.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
@@ -48,6 +50,12 @@ router.post('/auth/magic-link/exchange', async (c) => {
       type: 'credential',
     });
     user = (await db.query.users.findFirst({ where: eq(users.id, userId) }))!;
+
+    // Track new user signup
+    const ph = getPostHog();
+    if (ph) {
+      ph.capture({ distinctId: userId, event: 'New User', properties: { email: email.toLowerCase() } });
+    }
   }
 
   // Use a distinct prefix so our tokens are distinguishable from better-auth’s (e.g. nanoid-style); both are valid.
@@ -80,12 +88,28 @@ router.post('/customers/register', async (c) => {
 
     const customerId = newCustomerId();
 
+    const cfAccountId = (c as { env?: { CF_ACCOUNT_ID?: string } }).env?.CF_ACCOUNT_ID ?? process.env.CF_ACCOUNT_ID;
+    const cfApiToken = (c as { env?: { CF_AI_GATEWAY_API_TOKEN?: string } }).env?.CF_AI_GATEWAY_API_TOKEN ?? process.env.CF_AI_GATEWAY_API_TOKEN;
+    let cfGatewayId: string | null = null;
+
+    if (cfAccountId && cfApiToken) {
+      try {
+        const gatewaySlug = `stereos-${customerId}`;
+        const gw = await createCfGateway(cfAccountId, cfApiToken, { id: gatewaySlug });
+        cfGatewayId = gw.id;
+      } catch (err) {
+        console.error('CF AI Gateway provisioning failed:', err);
+        // Non-fatal: customer can still be created, gateway can be provisioned later
+      }
+    }
+
     const [customer] = await db
       .insert(customers)
       .values({
         user_id,
         customer_id: customerId,
         customer_stripe_id: stripeCustomerId,
+        cf_gateway_id: cfGatewayId,
         billing_status: 'trial',
       })
       .returning();

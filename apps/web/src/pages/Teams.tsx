@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_BASE, getAuthHeaders } from '../lib/api';
+import { posthog } from '../lib/posthog';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 
@@ -20,10 +21,12 @@ interface User {
 
 export function Teams() {
   const queryClient = useQueryClient();
+  const [showArchived, setShowArchived] = useState(false);
   const { data: teamsData, isLoading } = useQuery<{ teams: Team[] }>({
-    queryKey: ['teams'],
+    queryKey: ['teams', showArchived],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/teams?include_archived=1`, { credentials: 'include', headers: getAuthHeaders() });
+      const url = showArchived ? `${API_BASE}/v1/teams?include_archived=1` : `${API_BASE}/v1/teams`;
+      const res = await fetch(url, { credentials: 'include', headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Failed to fetch teams');
       return res.json();
     },
@@ -60,6 +63,12 @@ export function Teams() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create team');
+      const manager = usersData?.users.find((u) => u.id === managerId);
+      posthog.capture('Team Created', {
+        team_name: name,
+        manager_user_id: managerId || null,
+        manager_name: manager?.name || manager?.email || null,
+      });
       setName('');
       setProfilePic('');
       setManagerId('');
@@ -143,7 +152,13 @@ export function Teams() {
             <Plus size={18} /> Create team
           </button>
         </div>
-        <p className="text-large" style={{ color: '#555', margin: '8px 0 0' }}>{teams.length} teams</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '8px 0 0' }}>
+          <p className="text-large" style={{ color: '#555', margin: 0 }}>{teams.length} teams</p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#555', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            Show archived
+          </label>
+        </div>
       </div>
 
       {showCreate && (

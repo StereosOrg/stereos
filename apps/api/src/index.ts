@@ -14,12 +14,16 @@ import { logger } from 'hono/logger';
 import { serve } from '@hono/node-server';
 import authRouter from './routes/auth.js';
 import billingRouter from './routes/billing.js';
-import openrouterRouter from './routes/openrouter.js';
 import usersRouter from './routes/users.js';
 import onboardingRouter from './routes/onboarding.js';
 import invitesRouter from './routes/invites.js';
 import telemetryRouter from './routes/telemetry.js';
 import teamsRouter from './routes/teams.js';
+import partnersRouter from './routes/partners.js';
+import aiKeysRouter from './routes/ai-keys.js';
+import aiProxyRouter from './routes/ai-proxy.js';
+import dlpRouter from './routes/dlp.js';
+import logpushRouter from './routes/logpush.js';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://localhost:5432/stereos';
 const db = createDb(connectionString);
@@ -50,12 +54,16 @@ app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOStri
 
 app.route('/v1', authRouter);
 app.route('/v1', billingRouter);
-app.route('/v1', openrouterRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);
 app.route('/v1', telemetryRouter);
 app.route('/v1', teamsRouter);
+app.route('/v1', partnersRouter);
+app.route('/v1', aiKeysRouter);
+app.route('/v1', aiProxyRouter);
+app.route('/v1', dlpRouter);
+app.route('/v1', logpushRouter);
 
 app.notFound((c) => c.json({ error: 'Not Found' }, 404));
 

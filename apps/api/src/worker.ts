@@ -9,12 +9,16 @@ import type { AuthType } from './lib/auth.js';
 import type { Database } from '@stereos/shared/db';
 import authRouter from './routes/auth.js';
 import billingRouter from './routes/billing.js';
-import openrouterRouter from './routes/openrouter.js';
 import usersRouter from './routes/users.js';
 import onboardingRouter from './routes/onboarding.js';
 import invitesRouter from './routes/invites.js';
 import telemetryRouter from './routes/telemetry.js';
 import teamsRouter from './routes/teams.js';
+import partnersRouter from './routes/partners.js';
+import aiKeysRouter from './routes/ai-keys.js';
+import aiProxyRouter from './routes/ai-proxy.js';
+import dlpRouter from './routes/dlp.js';
+import logpushRouter from './routes/logpush.js';
 
 // Cache db and auth per isolate to avoid expensive re-initialization on every request.
 // Env bindings are stable within a deployment, so we key by DATABASE_URL to detect changes.
@@ -26,7 +30,6 @@ type Env = {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   STRIPE_SECRET_KEY: string;
-  STRIPE_PRICE_ID: string;
   STRIPE_WEBHOOK_SECRET: string;
   BASE_URL: string;
   TRUSTED_ORIGINS?: string;
@@ -38,8 +41,18 @@ type Env = {
   GITHUB_CLIENT_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-  OPENROUTER_MANAGEMENT_KEY?: string;
   OPENROUTER_BROADCAST_SECRET?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_AI_GATEWAY_API_TOKEN?: string;
+  /** Stripe price/meter overrides for dev/test mode (set in wrangler.toml [vars] or secrets) */
+  STRIPE_PRICE_TELEMETRY_EVENTS?: string;
+  STRIPE_PRICE_FLAT_MONTHLY?: string;
+  STRIPE_PRICE_MANAGED_KEYS?: string;
+  STRIPE_METER_TELEMETRY_EVENTS?: string;
+  STRIPE_METER_MANAGED_KEYS?: string;
+  LOGPUSH_PUBLIC_KEY?: string;
+  LOGPUSH_PRIVATE_KEY?: string;
+  LOGPUSH_INGEST_SECRET?: string;
 };
 
 function normalizeOrigin(o: string): string {
@@ -168,12 +181,16 @@ app.get('/health', (c) =>
 
 app.route('/v1', authRouter);
 app.route('/v1', billingRouter);
-app.route('/v1', openrouterRouter);
 app.route('/v1', usersRouter);
 app.route('/v1', onboardingRouter);
 app.route('/v1', invitesRouter);
 app.route('/v1', telemetryRouter);
 app.route('/v1', teamsRouter);
+app.route('/v1', partnersRouter);
+app.route('/v1', aiKeysRouter);
+app.route('/v1', aiProxyRouter);
+app.route('/v1', dlpRouter);
+app.route('/v1', logpushRouter);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/v1/') || c.req.path === '/health') {

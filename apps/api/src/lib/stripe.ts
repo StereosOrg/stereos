@@ -1,31 +1,31 @@
 import Stripe from 'stripe';
 import type { Database } from '@stereos/shared/db';
-import { customers, usageEvents } from '@stereos/shared/schema';
+import { customers, usageEvents, referrals } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 
 // Custom checkout (ui_mode: 'custom') requires 2025-03-31.basil; Stripe Node types may still reference acacia.
 const STRIPE_API_VERSION = '2025-03-31.basil' as '2025-02-24.acacia';
 
-// ── Price IDs (must match Stripe Dashboard) ────────────────────────────────
+// ── Price IDs ───────────────────────────────────────────────────────────────
+// Set via env vars to support separate Stripe test/live accounts.
+// Falls back to production (live) IDs when env vars are not set.
+
+const env = (key: string, fallback: string): string =>
+  (typeof process !== 'undefined' && process.env?.[key]) || fallback;
 
 /** Telemetry Events: metered, $0.0025 per event */
-export const PRICE_ID_TELEMETRY_EVENTS = 'price_1SzCuEFRJliLrxglL7b3fpHW';
+export const PRICE_ID_TELEMETRY_EVENTS = env('STRIPE_PRICE_TELEMETRY_EVENTS', 'price_1SzCuEFRJliLrxglL7b3fpHW');
 export const TELEMETRY_EVENTS_UNIT_PRICE = 0.0025;
 
-/** Tool profiles: metered, $75.00 per tool profile */
-export const PRICE_ID_TOOL_PROFILES = 'price_1SzCqLFRJliLrxglOMAPx25f';
-export const TOOL_PROFILES_UNIT_PRICE = 75;
-
 /** Flat monthly: $450/mo (recurring line item) */
-export const PRICE_ID_FLAT_MONTHLY = 'price_1SzCv0FRJliLrxglgIuO5cdX';
+export const PRICE_ID_FLAT_MONTHLY = env('STRIPE_PRICE_FLAT_MONTHLY', 'price_1SzCv0FRJliLrxglgIuO5cdX');
 
 /** Managed keys: metered, per OpenRouter key created in portal */
-export const PRICE_ID_MANAGED_KEYS = 'price_1T0bTQFRJliLrxgl0Hu8D8GO';
+export const PRICE_ID_MANAGED_KEYS = env('STRIPE_PRICE_MANAGED_KEYS', 'price_1T0bTQFRJliLrxgl0Hu8D8GO');
 
 /** Stripe meter event names (must match meters in Stripe Dashboard) */
-export const STRIPE_METER_EVENT_TELEMETRY_EVENTS = 'telemetry_events';
-export const STRIPE_METER_EVENT_TOOL_PROFILES = 'tool_profiles';
-export const STRIPE_METER_EVENT_MANAGED_KEYS = 'managed_keys';
+export const STRIPE_METER_EVENT_TELEMETRY_EVENTS = env('STRIPE_METER_TELEMETRY_EVENTS', 'telemetry_events');
+export const STRIPE_METER_EVENT_MANAGED_KEYS = env('STRIPE_METER_MANAGED_KEYS', 'managed_keys');
 
 /** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
 export function getStripe(apiKey?: string): Stripe | null {
@@ -114,43 +114,6 @@ export async function trackTelemetryEventsUsage(
   if (customer?.customer_stripe_id) {
     await createStripeMeterEvent(
       STRIPE_METER_EVENT_TELEMETRY_EVENTS,
-      customer.customer_stripe_id,
-      quantity,
-      new Date(),
-      idempotencyKey,
-      stripeApiKey
-    );
-  }
-}
-
-/** Track tool profiles usage. Records in DB and reports to Stripe Tool Profiles meter ($75/profile). Call when a new tool profile is created. */
-export async function trackToolProfilesUsage(
-  db: Database,
-  customerId: string,
-  quantity: number,
-  metadata?: Record<string, unknown>,
-  stripeApiKey?: string
-): Promise<void> {
-  const totalPrice = TOOL_PROFILES_UNIT_PRICE * quantity;
-  const idempotencyKey = `${customerId}-tool_profiles-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-
-  await db.insert(usageEvents).values({
-    customer_id: customerId,
-    event_type: 'tool_profile',
-    idempotency_key: idempotencyKey,
-    quantity,
-    unit_price: TOOL_PROFILES_UNIT_PRICE.toFixed(2),
-    total_price: totalPrice.toFixed(2),
-    metadata: metadata ? { ...metadata } : {},
-  });
-
-  const customer = await db.query.customers.findFirst({
-    where: eq(customers.id, customerId),
-    columns: { customer_stripe_id: true },
-  });
-  if (customer?.customer_stripe_id) {
-    await createStripeMeterEvent(
-      STRIPE_METER_EVENT_TOOL_PROFILES,
       customer.customer_stripe_id,
       quantity,
       new Date(),
@@ -354,6 +317,12 @@ async function handleSubscriptionCreated(db: Database, subscription: Stripe.Subs
       billing_status: 'active',
     })
     .where(eq(customers.id, customerId));
+
+  // Mark referral as converted (DB trigger will bump partner tier)
+  await db
+    .update(referrals)
+    .set({ status: 'converted', converted_at: new Date() })
+    .where(eq(referrals.customer_id, customerId));
 
   console.log(`Payment confirmed for customer: ${customerId}`);
 }

@@ -126,7 +126,7 @@ export function Dashboard() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {stats.recent_spans.map((event) => {
-                const href = `/diffs/${event.id}`;
+                const href = `/spans/${event.id}`;
                 return (
                 <Link
                   key={event.id}

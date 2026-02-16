@@ -76,12 +76,14 @@ export async function getCurrentUser(c: HonoMiddlewareContext) {
 
 const customerColumns = {
   id: true,
+  customer_id: true,
   company_name: true,
   billing_email: true,
   logo_url: true,
   payment_info_provided: true,
   onboarding_completed: true,
   billing_status: true,
+  cf_gateway_id: true,
 } as const;
 
 // Resolve the customer for a user: check users.customer_id first, fall back to customers.user_id (owner).
@@ -223,6 +225,19 @@ export async function requireFullAccess(c: HonoMiddlewareContext, next: () => Pr
       });
     });
   });
+}
+
+// Middleware: Require admin or manager role
+export async function requireAdminOrManager(c: HonoMiddlewareContext, next: () => Promise<void>) {
+  const user = await getCurrentUser(c);
+  const role = (user as { role?: string })?.role;
+  
+  if (!user || (role !== 'admin' && role !== 'manager')) {
+    return c.json({ error: 'Forbidden - Admin or manager access required' }, 403);
+  }
+  
+  c.set('user', user);
+  await next();
 }
 
 // Middleware: Set user in context from session (optional, for routes that don't require auth)

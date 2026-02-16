@@ -28,14 +28,15 @@ interface Team {
   name: string;
 }
 
-interface OpenRouterKey {
+interface AiGatewayKey {
   id: string;
-  openrouter_key_hash: string;
+  key_hash: string;
   name: string;
   customer_id: string;
   user_id: string | null;
-  limit_usd: string | null;
-  limit_reset: string | null;
+  budget_usd: string | null;
+  spend_usd: string;
+  budget_reset: string | null;
   created_at: string;
 }
 
@@ -49,25 +50,25 @@ export function Settings() {
   const [tokensLoading, setTokensLoading] = useState(true);
   const [tokensError, setTokensError] = useState('');
   const [teams, setTeams] = useState<Team[]>([]);
-  const [openrouterKeys, setOpenrouterKeys] = useState<OpenRouterKey[]>([]);
-  const [openrouterKeysLoading, setOpenrouterKeysLoading] = useState(true);
-  const [openrouterKeysError, setOpenrouterKeysError] = useState('');
+  const [aiGatewayKeys, setAiGatewayKeys] = useState<AiGatewayKey[]>([]);
+  const [aiGatewayKeysLoading, setAiGatewayKeysLoading] = useState(true);
+  const [aiGatewayKeysError, setAiGatewayKeysError] = useState('');
 
-  const loadOpenrouterKeys = async () => {
-    setOpenrouterKeysLoading(true);
-    setOpenrouterKeysError('');
+  const loadAiGatewayKeys = async () => {
+    setAiGatewayKeysLoading(true);
+    setAiGatewayKeysError('');
     try {
-      const res = await fetch(`${API_BASE}/v1/keys/user`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/user`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch OpenRouter keys');
-      setOpenrouterKeys(data.keys ?? []);
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch AI keys');
+      setAiGatewayKeys(data.keys ?? []);
     } catch (e) {
-      setOpenrouterKeysError(e instanceof Error ? e.message : 'Failed to fetch OpenRouter keys');
+      setAiGatewayKeysError(e instanceof Error ? e.message : 'Failed to fetch AI keys');
     } finally {
-      setOpenrouterKeysLoading(false);
+      setAiGatewayKeysLoading(false);
     }
   };
 
@@ -113,20 +114,20 @@ export function Settings() {
   }, []);
 
   useEffect(() => {
-    loadOpenrouterKeys();
+    loadAiGatewayKeys();
   }, []);
 
-  const revokeOpenrouterKey = async (hash: string) => {
-    if (!confirm('Revoke this OpenRouter key? It will stop working immediately.')) return;
+  const revokeAiGatewayKey = async (hash: string) => {
+    if (!confirm('Revoke this AI key? It will stop working immediately.')) return;
     try {
-      const res = await fetch(`${API_BASE}/v1/keys/user/${encodeURIComponent(hash)}`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/${encodeURIComponent(hash)}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: getAuthHeaders(),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to revoke key');
-      await loadOpenrouterKeys();
+      await loadAiGatewayKeys();
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to revoke key');
     }
@@ -337,15 +338,15 @@ export function Settings() {
         <p style={{ color: '#555', fontSize: '15px', marginBottom: '20px' }}>
           Inference keys provisioned for you by a manager. Use in agents or the VS Code extension for LLM access.
         </p>
-        {openrouterKeysLoading ? (
+        {aiGatewayKeysLoading ? (
           <p style={{ color: '#666' }}>Loading…</p>
-        ) : openrouterKeysError ? (
-          <p style={{ color: '#dc2626', fontWeight: 600 }}>{openrouterKeysError}</p>
-        ) : openrouterKeys.length === 0 ? (
+        ) : aiGatewayKeysError ? (
+          <p style={{ color: '#dc2626', fontWeight: 600 }}>{aiGatewayKeysError}</p>
+        ) : aiGatewayKeys.length === 0 ? (
           <p style={{ color: '#666' }}>No inference keys provisioned for you yet. Ask a manager to provision one from your user profile.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {openrouterKeys.map((k) => (
+            {aiGatewayKeys.map((k) => (
               <div
                 key={k.id}
                 style={{
@@ -372,22 +373,23 @@ export function Settings() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Link
-                    to={`/keys/${k.openrouter_key_hash}`}
+                    to={`/keys/${k.key_hash}`}
                     style={{ fontSize: '16px', fontWeight: 600, textDecoration: 'none', color: 'inherit' }}
                   >
                     {k.name}
                   </Link>
                   <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#555' }}>
-                    {k.openrouter_key_hash.slice(0, 12)}…
-                    {k.limit_usd ? ` · $${k.limit_usd} limit` : ''}
-                    {k.limit_reset ? ` · ${k.limit_reset}` : ''}
+                    {k.key_hash.slice(0, 12)}…
+                    {k.budget_usd ? ` · $${k.budget_usd} budget` : ''}
+                    {k.spend_usd ? ` · $${k.spend_usd} spent` : ''}
+                    {k.budget_reset ? ` · ${k.budget_reset}` : ''}
                   </p>
                 </div>
                 <span style={{ fontSize: '13px', color: '#666' }}>{new Date(k.created_at).toLocaleDateString()}</span>
                 <button
                   type="button"
                   className="btn"
-                  onClick={() => revokeOpenrouterKey(k.openrouter_key_hash)}
+                  onClick={() => revokeAiGatewayKey(k.key_hash)}
                   style={{ color: '#dc2626' }}
                 >
                   <Trash2 size={18} />

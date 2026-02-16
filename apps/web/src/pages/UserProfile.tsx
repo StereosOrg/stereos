@@ -437,28 +437,25 @@ export function UserProfile() {
   );
 }
 
-interface OpenRouterKeyItem {
+interface AiKeyItem {
   id: string;
-  openrouter_key_hash: string;
+  key_hash: string;
   name: string;
   user_id: string | null;
   team_id: string | null;
-  team_name?: string;
-  limit_usd: string | null;
-  limit_reset: string | null;
+  team: { id: string; name: string } | null;
+  budget_usd: string | null;
+  spend_usd: string;
+  budget_reset: string | null;
+  disabled: boolean;
   created_at: string;
-  limit?: number | null;
-  limit_remaining?: number | null;
-  usage_daily?: number;
-  usage_monthly?: number;
-  disabled?: boolean;
 }
 
 function UserKeysSection({ userId }: { userId: string }) {
-  const { data, isLoading, error } = useQuery<{ user_keys: OpenRouterKeyItem[]; team_keys: OpenRouterKeyItem[] }>({
+  const { data, isLoading, error } = useQuery<{ keys: AiKeyItem[] }>({
     queryKey: ['user-keys', userId],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/keys/user/${userId}`, {
+      const res = await fetch(`${API_BASE}/v1/ai/keys/user/${userId}`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
@@ -468,16 +465,14 @@ function UserKeysSection({ userId }: { userId: string }) {
     enabled: !!userId,
   });
 
-  const userKeys = data?.user_keys ?? [];
-  const teamKeys = data?.team_keys ?? [];
-  const allKeys = [...userKeys, ...teamKeys];
-  const hasKeys = allKeys.length > 0;
-  const totalMonthlyUsage = allKeys.reduce((sum, k) => sum + (k.usage_monthly ?? 0), 0);
+  const keys = data?.keys ?? [];
+  const hasKeys = keys.length > 0;
+  const totalSpend = keys.reduce((sum, k) => sum + parseFloat(String(k.spend_usd ?? '0')), 0);
 
   if (isLoading) {
     return (
       <div className="card">
-        <h2 className="heading-3" style={{ marginBottom: '16px' }}>API keys</h2>
+        <h2 className="heading-3" style={{ marginBottom: '16px' }}>AI keys</h2>
         <p style={{ color: '#555' }}>Loading keys…</p>
       </div>
     );
@@ -486,15 +481,15 @@ function UserKeysSection({ userId }: { userId: string }) {
   if (error) {
     return (
       <div className="card">
-        <h2 className="heading-3" style={{ marginBottom: '16px' }}>API keys</h2>
+        <h2 className="heading-3" style={{ marginBottom: '16px' }}>AI keys</h2>
         <p style={{ color: '#dc2626', fontWeight: 600 }}>Failed to load keys.</p>
       </div>
     );
   }
 
-  const KeyRow = ({ k }: { k: OpenRouterKeyItem }) => (
+  const KeyRow = ({ k }: { k: AiKeyItem }) => (
     <Link
-      to={`/keys/${k.openrouter_key_hash}`}
+      to={`/keys/${k.key_hash}`}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -513,11 +508,11 @@ function UserKeysSection({ userId }: { userId: string }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>{k.name}</p>
         <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#555' }}>
-          {k.openrouter_key_hash.slice(0, 12)}…
-          {k.limit_usd ? ` · $${k.limit_usd} limit` : ''}
-          {k.limit_reset ? ` · ${k.limit_reset}` : ''}
-          {k.team_name ? ` · ${k.team_name}` : ' · User'}
-          {k.usage_monthly != null ? ` · $${k.usage_monthly.toFixed(2)}/mo` : ''}
+          {k.key_hash.slice(0, 12)}…
+          {k.budget_usd ? ` · $${parseFloat(k.budget_usd).toFixed(2)} budget` : ''}
+          {k.budget_reset ? ` · ${k.budget_reset}` : ''}
+          {k.team ? ` · ${k.team.name}` : ' · User'}
+          {` · $${parseFloat(String(k.spend_usd ?? '0')).toFixed(2)} spent`}
         </p>
       </div>
       <span style={{ fontSize: '12px', color: '#666' }}>{new Date(k.created_at).toLocaleDateString()}</span>
@@ -526,33 +521,18 @@ function UserKeysSection({ userId }: { userId: string }) {
 
   return (
     <div className="card">
-      <h2 className="heading-3" style={{ marginBottom: '16px' }}>API keys</h2>
-      {hasKeys && totalMonthlyUsage > 0 && (
+      <h2 className="heading-3" style={{ marginBottom: '16px' }}>AI keys</h2>
+      {hasKeys && totalSpend > 0 && (
         <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '6px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Monthly usage (OpenRouter)</span>
-          <p style={{ margin: '4px 0 0', fontSize: '20px', fontWeight: 700 }}>${totalMonthlyUsage.toFixed(2)}</p>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total spend</span>
+          <p style={{ margin: '4px 0 0', fontSize: '20px', fontWeight: 700 }}>${totalSpend.toFixed(2)}</p>
         </div>
       )}
       {!hasKeys ? (
-        <p style={{ color: '#555', textAlign: 'center', padding: '24px' }}>No OpenRouter keys for this user yet.</p>
+        <p style={{ color: '#555', textAlign: 'center', padding: '24px' }}>No AI keys for this user yet.</p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {userKeys.length > 0 && (
-            <div>
-              <p style={{ fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>User keys</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {userKeys.map((k) => <KeyRow key={k.id} k={k} />)}
-              </div>
-            </div>
-          )}
-          {teamKeys.length > 0 && (
-            <div>
-              <p style={{ fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Team keys</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {teamKeys.map((k) => <KeyRow key={k.id} k={k} />)}
-              </div>
-            </div>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {keys.map((k) => <KeyRow key={k.id} k={k} />)}
         </div>
       )}
     </div>

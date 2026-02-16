@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { users, customers } from '@stereos/shared/schema';
+import { users, customers, partners, referrals } from '@stereos/shared/schema';
 import { newUuid, newCustomerId } from '@stereos/shared/ids';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createStripeCustomer, createEmbeddedCheckoutSession, confirmCheckoutSession } from '../lib/stripe.js';
+import { createCfGateway } from '../lib/cloudflare-ai.js';
 import { requireAuth, getCurrentUser, getCustomerForUser, getFrontendBaseUrl } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
 
@@ -18,6 +19,7 @@ const onboardingSchema = z.object({
   image: z.string().optional(),
   companyName: z.string().min(1, 'Company name is required'),
   billingEmail: z.string().email('Valid email required'),
+  ref: z.string().optional(),
 });
 
 // GET /v1/onboarding/status - Check if user needs onboarding
@@ -72,7 +74,7 @@ router.get('/onboarding/status', async (c) => {
 
 // POST /v1/onboarding/complete - Complete onboarding and create or update customer
 router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Promise<void>) => Promise<void>, zValidator('json', onboardingSchema), async (c) => {
-  const data = c.req.valid('json') as { firstName: string; lastName: string; title: 'engineer' | 'manager' | 'cto' | 'founder' | 'vp' | 'lead' | 'architect' | 'product_manager'; image?: string; companyName: string; billingEmail: string };
+  const data = c.req.valid('json') as { firstName: string; lastName: string; title: 'engineer' | 'manager' | 'cto' | 'founder' | 'vp' | 'lead' | 'architect' | 'product_manager'; image?: string; companyName: string; billingEmail: string; ref?: string };
   const user = c.get('user')!;
   const db = c.get('db');
 
@@ -116,12 +118,28 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
     const stripeCustomerId = await createStripeCustomer(data.billingEmail as string, data.companyName as string);
     const customerId = newCustomerId();
 
+    // Provision Cloudflare AI Gateway
+    const cfAccountId = (c as { env?: { CF_ACCOUNT_ID?: string } }).env?.CF_ACCOUNT_ID ?? process.env.CF_ACCOUNT_ID;
+    const cfApiToken = (c as { env?: { CF_AI_GATEWAY_API_TOKEN?: string } }).env?.CF_AI_GATEWAY_API_TOKEN ?? process.env.CF_AI_GATEWAY_API_TOKEN;
+    let cfGatewayId: string | null = null;
+
+    if (cfAccountId && cfApiToken) {
+      try {
+        const gatewaySlug = `stereos-${customerId}`;
+        const gw = await createCfGateway(cfAccountId, cfApiToken, { id: gatewaySlug });
+        cfGatewayId = gw.id;
+      } catch (err) {
+        console.error('CF AI Gateway provisioning failed:', err);
+      }
+    }
+
     const [customer] = await db
       .insert(customers)
       .values({
         user_id: user.id,
         customer_id: customerId,
         customer_stripe_id: stripeCustomerId,
+        cf_gateway_id: cfGatewayId,
         company_name: data.companyName,
         billing_email: data.billingEmail,
         onboarding_completed: true,
@@ -137,6 +155,22 @@ router.post('/onboarding/complete', requireAuth as (c: unknown, next: () => Prom
       onboarding_completed: true,
       onboarding_completed_at: new Date(),
     }).where(eq(users.id, user.id));
+
+    // Create referral if valid partner code was provided
+    const refCode = data.ref?.trim().toUpperCase().replace(/\s+/g, '');
+    if (refCode) {
+      const partner = await db.query.partners.findFirst({
+        where: eq(partners.partner_code, refCode),
+        columns: { id: true },
+      });
+      if (partner) {
+        await db.insert(referrals).values({
+          partner_id: partner.id,
+          customer_id: customer.id,
+          status: 'pending',
+        });
+      }
+    }
 
     return c.json({
       success: true,
@@ -225,12 +259,14 @@ router.get('/customers/me', requireAuth as (c: unknown, next: () => Promise<void
     return c.json({
       customer: {
         id: customer.id,
+        customer_id: customer.customer_id,
         company_name: customer.company_name,
         billing_email: customer.billing_email,
         logo_url: customer.logo_url,
         payment_info_provided: customer.payment_info_provided,
         onboarding_completed: customer.onboarding_completed,
         billing_status: customer.billing_status,
+        cf_gateway_id: customer.cf_gateway_id,
       },
     });
   } catch (error) {
