@@ -74,6 +74,17 @@ export function TeamProfile() {
     },
   });
 
+  const { data: customerData } = useQuery<{ customer: { id: string } }>({
+    queryKey: ['customers-me'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/customers/me`, { credentials: 'include', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Failed to fetch customer');
+      return res.json();
+    },
+  });
+
+  const customerId = customerData?.customer?.id;
+
   const {
     data: teamKeysData,
     isLoading: teamKeysLoading,
@@ -97,7 +108,7 @@ export function TeamProfile() {
   const isManagerOrAdmin = meData?.user?.role === 'admin' || meData?.user?.role === 'manager';
 
   const createTeamKey = async () => {
-    if (!teamId || !keyName.trim()) return;
+    if (!teamId || !keyName.trim() || !customerId) return;
     setCreatingKey(true);
     setCreateKeyError('');
     setCreatedKeyRaw(null);
@@ -106,7 +117,7 @@ export function TeamProfile() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
-        body: JSON.stringify({ name: keyName.trim() }),
+        body: JSON.stringify({ name: keyName.trim(), customer_id: customerId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create key');
@@ -309,7 +320,7 @@ export function TeamProfile() {
                 type="button"
                 className="btn btn-primary"
                 onClick={createTeamKey}
-                disabled={creatingKey || !keyName.trim()}
+                disabled={creatingKey || !keyName.trim() || !customerId}
               >
                 <Plus size={18} />
                 {creatingKey ? 'Creating…' : 'Create key'}
