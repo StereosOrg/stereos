@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { db } from '@stereos/shared/db';
 import * as schema from '@stereos/shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
+import type { Database } from '@stereos/shared/db';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
@@ -71,6 +71,7 @@ const createKeySchema = z.object({
 
 // POST /v1/ai/keys/user - Create a user key
 router.post('/ai/keys/user', requireAuth, requireAdminOrManager, zValidator('json', createKeySchema), async (c) => {
+  const db = c.get('db') as Database;
   const data = c.req.valid('json') as z.infer<typeof createKeySchema>;
   const createdByUserId = c.get('user')?.id;
 
@@ -122,6 +123,7 @@ router.post('/ai/keys/user', requireAuth, requireAdminOrManager, zValidator('jso
 
 // POST /v1/ai/keys/team/:teamId - Create a team key
 router.post('/ai/keys/team/:teamId', requireAuth, requireAdminOrManager, zValidator('json', createKeySchema.omit({ team_id: true })), async (c) => {
+  const db = c.get('db') as Database;
   const teamId = c.req.param('teamId');
   const data = c.req.valid('json') as z.infer<typeof createKeySchema>;
   const createdByUserId = c.get('user')?.id;
@@ -183,6 +185,7 @@ router.post('/ai/keys/team/:teamId', requireAuth, requireAdminOrManager, zValida
 
 // GET /v1/ai/keys/customer - List all keys for customer
 router.get('/ai/keys/customer', requireAuth, requireAdminOrManager, async (c) => {
+  const db = c.get('db') as Database;
   const user = c.get('user')!;
   const customer = await getCustomerForUser(c as any, user.id);
 
@@ -225,6 +228,7 @@ router.get('/ai/keys/customer', requireAuth, requireAdminOrManager, async (c) =>
 
 // GET /v1/ai/keys/user - List keys for the current authenticated user
 router.get('/ai/keys/user', requireAuth, async (c) => {
+  const db = c.get('db') as Database;
   const currentUser = c.get('user')!;
 
   try {
@@ -244,6 +248,7 @@ router.get('/ai/keys/user', requireAuth, async (c) => {
 
 // GET /v1/ai/keys/user/:userId - List keys for user
 router.get('/ai/keys/user/:userId', requireAuth, async (c) => {
+  const db = c.get('db') as Database;
   const userId = c.req.param('userId');
   const currentUser = c.get('user');
 
@@ -269,6 +274,7 @@ router.get('/ai/keys/user/:userId', requireAuth, async (c) => {
 
 // GET /v1/ai/keys/:hash/details - Get key details
 router.get('/ai/keys/:hash/details', requireAuth, async (c) => {
+  const db = c.get('db') as Database;
   const keyHash = c.req.param('hash');
 
   try {
@@ -307,6 +313,7 @@ router.get('/ai/keys/:hash/details', requireAuth, async (c) => {
 
 // PATCH /v1/ai/keys/:hash - Update key
 router.patch('/ai/keys/:hash', requireAuth, requireAdminOrManager, async (c) => {
+  const db = c.get('db') as Database;
   const keyHash = c.req.param('hash');
   const body = await c.req.json();
 
@@ -331,6 +338,7 @@ router.patch('/ai/keys/:hash', requireAuth, requireAdminOrManager, async (c) => 
 
 // DELETE /v1/ai/keys/:hash - Delete key
 router.delete('/ai/keys/:hash', requireAuth, requireAdminOrManager, async (c) => {
+  const db = c.get('db') as Database;
   const keyHash = c.req.param('hash');
 
   try {
@@ -372,8 +380,8 @@ router.get('/ai/gateway', requireAuth, requireAdminOrManager, async (c) => {
     return c.json({ error: 'No customer found' }, 404);
   }
 
-  const cfAccountId = process.env.CF_ACCOUNT_ID;
-  const baseUrl = process.env.BASE_URL || (c.env as any)?.BASE_URL || 'https://api.trystereos.com';
+  const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+  const baseUrl = (c.env as any)?.BASE_URL || process.env.BASE_URL || 'https://api.trystereos.com';
 
   return c.json({
     cf_gateway_id: customer.cf_gateway_id,
@@ -389,6 +397,7 @@ router.get('/ai/gateway', requireAuth, requireAdminOrManager, async (c) => {
 
 // POST /v1/ai/gateway/provision - Provision a Cloudflare AI Gateway for the customer
 router.post('/ai/gateway/provision', requireAuth, requireAdminOrManager, async (c) => {
+  const db = c.get('db') as Database;
   const { createCfGateway } = await import('../lib/cloudflare-ai.js');
   const user = c.get('user')!;
   const customer = await getCustomerForUser(c as any, user.id);
@@ -401,8 +410,8 @@ router.post('/ai/gateway/provision', requireAuth, requireAdminOrManager, async (
     return c.json({ error: 'Gateway already provisioned', cf_gateway_id: customer.cf_gateway_id }, 409);
   }
 
-  const cfAccountId = process.env.CF_ACCOUNT_ID;
-  const cfApiToken = process.env.CF_AI_GATEWAY_API_TOKEN;
+  const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+  const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
 
   if (!cfAccountId || !cfApiToken) {
     return c.json({ error: 'Cloudflare AI not configured on server' }, 503);
@@ -410,7 +419,7 @@ router.post('/ai/gateway/provision', requireAuth, requireAdminOrManager, async (
 
   try {
     const gatewaySlug = `stereos-${customer.customer_id}`;
-    const logpushPublicKey = process.env.LOGPUSH_PUBLIC_KEY ?? (c.env as any)?.LOGPUSH_PUBLIC_KEY;
+    const logpushPublicKey = (c.env as any)?.LOGPUSH_PUBLIC_KEY ?? process.env.LOGPUSH_PUBLIC_KEY;
     const gw = await createCfGateway(cfAccountId, cfApiToken, {
       id: gatewaySlug,
       ...(logpushPublicKey ? { logpush: true, logpush_public_key: logpushPublicKey } : {}),
@@ -449,8 +458,8 @@ router.patch('/ai/gateway/otel', requireAuth, requireAdminOrManager, async (c) =
     return c.json({ error: 'No gateway provisioned' }, 404);
   }
 
-  const cfAccountId = process.env.CF_ACCOUNT_ID;
-  const cfApiToken = process.env.CF_AI_GATEWAY_API_TOKEN;
+  const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+  const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
 
   if (!cfAccountId || !cfApiToken) {
     return c.json({ error: 'Cloudflare AI not configured on server' }, 503);

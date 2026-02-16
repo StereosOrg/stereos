@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { db } from '@stereos/shared/db';
+import type { Database } from '@stereos/shared/db';
 import * as schema from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 import { parseLogpushNdjson, decryptLogpushPayload } from '../lib/logpush-decrypt.js';
@@ -69,7 +69,7 @@ router.post('/logpush/ai-gateway', async (c) => {
 
   // Resolve gateway_id -> customer_id in bulk
   const gatewayIds = [...new Set(dlpEntries.map((e) => e.GatewayId).filter(Boolean))] as string[];
-  const dbInstance = c.get('db') ?? db;
+  const dbInstance = c.get('db') as Database;
 
   const customerMap = new Map<string, string>();
   for (const gid of gatewayIds) {

@@ -195,6 +195,23 @@ router.get('/dashboard', sessionOrTokenAuth, async (c) => {
   `);
   const totalsRow = Array.isArray(totalsResult) ? totalsResult[0] : (totalsResult as { rows?: unknown[] })?.rows?.[0];
 
+  // Get total AI spend from AiGatewayKey
+  const spendResult = await db.execute(sql`
+    SELECT COALESCE(SUM(spend_usd), 0)::numeric AS total_spend
+    FROM "AiGatewayKey"
+    WHERE customer_id = ${customerId}
+  `);
+  const spendRow = Array.isArray(spendResult) ? spendResult[0] : (spendResult as { rows?: unknown[] })?.rows?.[0];
+
+  // Get active users count (users with spans in last 30 days)
+  const activeUsersResult = await db.execute(sql`
+    SELECT COUNT(DISTINCT COALESCE(user_id, span_attributes->>'user.id'))::int AS active_users
+    FROM "TelemetrySpan"
+    WHERE customer_id = ${customerId}
+      AND start_time >= NOW() - INTERVAL '30 days'
+  `);
+  const activeUsersRow = Array.isArray(activeUsersResult) ? activeUsersResult[0] : (activeUsersResult as { rows?: unknown[] })?.rows?.[0];
+
   const recentSpans = await db.query.telemetrySpans.findMany({
     where: eq(telemetrySpans.customer_id, customerId),
     orderBy: desc(telemetrySpans.start_time),
@@ -260,6 +277,8 @@ router.get('/dashboard', sessionOrTokenAuth, async (c) => {
     total_spans: Number((totalsRow as Record<string, unknown>)?.total_spans ?? 0),
     total_traces: Number((totalsRow as Record<string, unknown>)?.total_traces ?? 0),
     active_sources: Number((totalsRow as Record<string, unknown>)?.active_sources ?? 0),
+    total_spend: Number((spendRow as Record<string, unknown>)?.total_spend ?? 0),
+    active_users: Number((activeUsersRow as Record<string, unknown>)?.active_users ?? 0),
     recent_spans: recent,
     most_active_user: mostActiveUser,
   });

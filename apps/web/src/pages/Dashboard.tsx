@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Activity, Layers, Users } from 'lucide-react';
+import { Activity, Users, DollarSign, UserCheck } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { VendorIcon } from '../components/ToolIcon';
 
@@ -17,6 +17,8 @@ interface DashboardStats {
   total_spans: number;
   total_traces: number;
   active_sources: number;
+  total_spend: number;
+  active_users: number;
   recent_spans: DashboardSpan[];
   most_active_user: { id: string; name: string | null; email: string | null; span_count: number } | null;
 }
@@ -64,25 +66,26 @@ export function Dashboard() {
       {/* Stats Grid */}
       <div className="grid-3" style={{ marginBottom: '40px' }}>
         <StatCard
+          title="Total Spend"
+          value={stats?.total_spend || 0}
+          icon={DollarSign}
+          color="var(--bg-white)"
+          description="AI usage costs (USD)"
+          format="currency"
+        />
+        <StatCard
+          title="Active Users"
+          value={stats?.active_users || 0}
+          icon={UserCheck}
+          color="var(--bg-white)"
+          description="Users with activity · 30d"
+        />
+        <StatCard
           title="Total Spans"
           value={stats?.total_spans || 0}
           icon={Activity}
           color="var(--bg-white)"
           description="All ingested spans"
-        />
-        <StatCard
-          title="Total Traces"
-          value={stats?.total_traces || 0}
-          icon={Layers}
-          color="var(--bg-white)"
-          description="Distinct traces"
-        />
-        <StatCard
-          title="Most Active User"
-          value={stats?.most_active_user?.span_count ?? 0}
-          icon={Users}
-          color="var(--bg-white)"
-          description={stats?.most_active_user ? `${stats.most_active_user.name || stats.most_active_user.email || 'Unknown'} · 30d` : 'No user activity'}
         />
       </div>
 
@@ -224,13 +227,19 @@ function StatCard({
   icon: Icon,
   color,
   description,
+  format,
 }: {
   title: string;
   value: number;
   icon: any;
   color: string;
   description: string;
+  format?: 'number' | 'currency';
 }) {
+  const displayValue = format === 'currency' 
+    ? `$${value.toFixed(2)}`
+    : value.toLocaleString();
+
   return (
     <div className="card" style={{ background: color }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -256,7 +265,7 @@ function StatCard({
             color: 'var(--dark)',
           }}
         >
-          {value.toLocaleString()}
+          {displayValue}
         </span>
       </div>
       <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '4px' }}>

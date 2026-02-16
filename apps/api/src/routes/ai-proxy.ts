@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
-import { db } from '@stereos/shared/db';
+import type { Database } from '@stereos/shared/db';
 import { aiGatewayKeys } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { checkBudget } from './ai-keys.js';
 import { ingestOtelSpans } from '../lib/telemetry-ingest.js';
+import type { AppVariables } from '../types/app.js';
 
 
-const router = new Hono();
+const router = new Hono<{ Variables: AppVariables }>();
 
 // Extract virtual key from Authorization header
 function extractApiKey(authHeader: string | undefined): string | null {
@@ -25,6 +26,7 @@ function hashKey(key: string): string {
 
 // Main proxy endpoint
 router.all('/ai/chat/completions', async (c) => {
+  const db = c.get('db') as Database;
   const startTime = Date.now();
   const authHeader = c.req.header('Authorization');
   const apiKey = extractApiKey(authHeader);
@@ -100,8 +102,8 @@ router.all('/ai/chat/completions', async (c) => {
     }
 
     // 6. Get Cloudflare gateway info
-    const cfAccountId = process.env.CF_ACCOUNT_ID;
-    const cfApiToken = process.env.CF_AI_GATEWAY_API_TOKEN;
+    const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+    const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
     const cfGatewayId = key.customer?.cf_gateway_id;
 
     if (!cfAccountId || !cfApiToken || !cfGatewayId) {

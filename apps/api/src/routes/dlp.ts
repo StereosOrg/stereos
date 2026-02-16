@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { db } from '@stereos/shared/db';
+import type { Database } from '@stereos/shared/db';
 import * as schema from '@stereos/shared/schema';
 import { eq, and, desc, sql, count } from 'drizzle-orm';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
@@ -29,15 +29,16 @@ const requireAdminOrManager = async (c: any, next: any) => {
   await next();
 };
 
-function getCfCredentials() {
-  const accountId = process.env.CF_ACCOUNT_ID;
-  const apiToken = process.env.CF_AI_GATEWAY_API_TOKEN;
+function getCfCredentials(c: any) {
+  // Support both Node.js (process.env) and Cloudflare Workers (c.env)
+  const accountId = c.env?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+  const apiToken = c.env?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
   return { accountId, apiToken };
 }
 
 // GET /v1/dlp/profiles — list available DLP profiles from the CF account
 router.get('/dlp/profiles', requireAuth, requireAdminOrManager, async (c) => {
-  const { accountId, apiToken } = getCfCredentials();
+  const { accountId, apiToken } = getCfCredentials(c);
   if (!accountId || !apiToken) {
     return c.json({ error: 'Cloudflare not configured on server' }, 503);
   }
@@ -63,7 +64,7 @@ router.get('/dlp/config', requireAuth, requireAdminOrManager, async (c) => {
     return c.json({ error: 'No AI Gateway provisioned' }, 400);
   }
 
-  const { accountId, apiToken } = getCfCredentials();
+  const { accountId, apiToken } = getCfCredentials(c);
   if (!accountId || !apiToken) {
     return c.json({ error: 'Cloudflare not configured on server' }, 503);
   }
@@ -100,7 +101,7 @@ router.put('/dlp/config', requireAuth, requireAdminOrManager, zValidator('json',
   }
 
   const body = c.req.valid('json') as z.infer<typeof updateConfigSchema>;
-  const { accountId, apiToken } = getCfCredentials();
+  const { accountId, apiToken } = getCfCredentials(c);
 
   if (!accountId || !apiToken) {
     return c.json({ error: 'Cloudflare not configured on server' }, 503);
@@ -148,7 +149,7 @@ router.get('/dlp/events', requireAuth, requireAdminOrManager, async (c) => {
 
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 100);
   const offset = parseInt(c.req.query('offset') ?? '0', 10);
-  const dbInstance = c.get('db') ?? db;
+  const dbInstance = c.get('db') as Database;
 
   try {
     const events = await dbInstance.query.dlpEvents.findMany({
@@ -177,7 +178,7 @@ router.get('/dlp/events/:eventId', requireAuth, requireAdminOrManager, async (c)
   if (!customer) return c.json({ error: 'No customer found' }, 404);
 
   const eventId = c.req.param('eventId');
-  const dbInstance = c.get('db') ?? db;
+  const dbInstance = c.get('db') as Database;
 
   try {
     const event = await dbInstance.query.dlpEvents.findFirst({
@@ -201,7 +202,7 @@ router.get('/dlp/stats', requireAuth, requireAdminOrManager, async (c) => {
   const customer = await getCustomerForUser(c as any, user.id);
   if (!customer) return c.json({ error: 'No customer found' }, 404);
 
-  const dbInstance = c.get('db') ?? db;
+  const dbInstance = c.get('db') as Database;
 
   try {
     const baseWhere = eq(schema.dlpEvents.customer_id, customer.id);

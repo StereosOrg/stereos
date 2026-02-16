@@ -1,5 +1,5 @@
--- Add cf_gateway_id to Customer
-ALTER TABLE "Customer" ADD COLUMN "cf_gateway_id" text UNIQUE;
+-- Add cf_gateway_id to Customer (idempotent)
+ALTER TABLE "Customer" ADD COLUMN IF NOT EXISTS "cf_gateway_id" text UNIQUE;
 
 -- Create budget reset enum
 DO $$ BEGIN
