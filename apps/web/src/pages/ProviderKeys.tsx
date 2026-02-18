@@ -17,11 +17,11 @@ interface ProviderKeysData {
 const PROVIDERS = [
   { id: 'openai', name: 'OpenAI', logo: 'https://images.seeklogo.com/logo-png/42/2/open-ai-logo-png_seeklogo-428036.png', description: 'GPT-4, GPT-4o, GPT-3.5' },
   { id: 'anthropic', name: 'Anthropic', logo: 'https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/1/anthropic-icon-wii9u8ifrjrd99btrqfgi.png/anthropic-icon-tdvkiqisswbrmtkiygb0ia.png', description: 'Claude 3.5 Sonnet, Claude 3 Opus' },
-  { id: 'google', name: 'Google', logo: 'https://www.google.com/favicon.ico', description: 'Gemini 1.5 Pro, Gemini 1.5 Flash' },
-  { id: 'groq', name: 'Groq', logo: 'https://groq.com/favicon.ico', description: 'Llama 3.1, Mixtral' },
-  { id: 'azure', name: 'Azure OpenAI', logo: 'https://azure.microsoft.com/favicon.ico', description: 'GPT-4, GPT-4o (requires endpoint)' },
-  { id: 'mistral', name: 'Mistral', logo: 'https://mistral.ai/favicon.ico', description: 'Mistral Large, Medium, Small' },
-  { id: 'cohere', name: 'Cohere', logo: 'https://cohere.com/favicon.ico', description: 'Command R, Command R+' },
+  // { id: 'google', name: 'Google', logo: 'https://www.google.com/favicon.ico', description: 'Gemini 1.5 Pro, Gemini 1.5 Flash' },
+  // { id: 'groq', name: 'Groq', logo: 'https://groq.com/favicon.ico', description: 'Llama 3.1, Mixtral' },
+  // { id: 'azure', name: 'Azure OpenAI', logo: 'https://azure.microsoft.com/favicon.ico', description: 'GPT-4, GPT-4o (requires endpoint)' },
+  // { id: 'mistral', name: 'Mistral', logo: 'https://mistral.ai/favicon.ico', description: 'Mistral Large, Medium, Small' },
+  // { id: 'cohere', name: 'Cohere', logo: 'https://cohere.com/favicon.ico', description: 'Command R, Command R+' },
 ];
 
 export function ProviderKeys() {
