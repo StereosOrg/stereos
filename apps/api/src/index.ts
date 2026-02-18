@@ -22,6 +22,7 @@ import teamsRouter from './routes/teams.js';
 import partnersRouter from './routes/partners.js';
 import aiKeysRouter from './routes/ai-keys.js';
 import aiProxyRouter from './routes/ai-proxy.js';
+import providerKeysRouter from './routes/provider-keys.js';
 import dlpRouter from './routes/dlp.js';
 import logpushRouter from './routes/logpush.js';
 
@@ -62,6 +63,7 @@ app.route('/v1', teamsRouter);
 app.route('/v1', partnersRouter);
 app.route('/v1', aiKeysRouter);
 app.route('/v1', aiProxyRouter);
+app.route('/v1', providerKeysRouter);
 app.route('/v1', dlpRouter);
 app.route('/v1', logpushRouter);
 

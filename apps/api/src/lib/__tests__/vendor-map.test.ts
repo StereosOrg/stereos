@@ -18,7 +18,7 @@ describe('canonicalizeVendor', () => {
 
   it('returns openai for GPT model attributes', () => {
     const result = canonicalizeVendor({
-      'gen_ai.request.model': 'gpt-4o',
+      'gen_ai.request.model': 'openai/gpt-4o',
       'service.name': 'test',
     });
     expect(result.slug).toBe('openai');
@@ -114,7 +114,7 @@ describe('isLLMTool', () => {
   });
 
   it('returns true when gen_ai.request.model or gen_ai.response.model is set', () => {
-    expect(isLLMTool({ 'gen_ai.request.model': 'gpt-4' })).toBe(true);
+    expect(isLLMTool({ 'gen_ai.request.model': 'openai/gpt-4' })).toBe(true);
     expect(isLLMTool({ 'gen_ai.response.model': 'claude-3' })).toBe(true);
   });
 

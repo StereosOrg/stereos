@@ -96,14 +96,14 @@ export function KeyManagement() {
     enabled: isAdminOrManager && modalType === 'team',
   });
 
-  const { data: modelsData } = useQuery<{ models: string[] }>({
-    queryKey: ['ai-models'],
+  const { data: modelsData } = useQuery<{ models: string[]; providers: string[] }>({
+    queryKey: ['provider-models'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/ai/models`, {
+      const res = await fetch(`${API_BASE}/v1/provider-keys/models`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error('Failed to fetch models');
+      if (!res.ok) throw new Error('Failed to fetch available models');
       return res.json();
     },
     enabled: isAdminOrManager,

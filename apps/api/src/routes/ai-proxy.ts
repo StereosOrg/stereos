@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Database } from '@stereos/shared/db';
+import * as schema from '@stereos/shared/schema';
 import { aiGatewayKeys, gatewayEvents } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 import { createHash } from 'crypto';
@@ -10,12 +11,24 @@ import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
-// Extract virtual key from Authorization header
-function extractApiKey(authHeader: string | undefined): string | null {
-  if (!authHeader) return null;
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.slice(7).trim();
+// Extract virtual key from headers.
+// Supports:
+// - x-stereos-virtual-key (preferred)
+// - Authorization: Bearer <key>
+// - x-api-key: <key>
+function extractApiKey(c: any): string | null {
+  const virtualKeyHeader = c.req.header('x-stereos-virtual-key');
+  if (virtualKeyHeader && virtualKeyHeader.trim()) return virtualKeyHeader.trim();
+
+  const auth = c.req.header('authorization') || c.req.header('Authorization');
+  if (auth && auth.toLowerCase().startsWith('bearer ')) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
   }
+
+  const apiKeyHeader = c.req.header('x-api-key');
+  if (apiKeyHeader && apiKeyHeader.trim()) return apiKeyHeader.trim();
+
   return null;
 }
 
@@ -24,15 +37,59 @@ function hashKey(key: string): string {
   return createHash('sha256').update(key).digest('hex');
 }
 
-// Main proxy endpoint
-router.all('/ai/chat/completions', async (c) => {
+type ParsedRequest = {
+  model: string | null;
+  contentType: string | null;
+  rawBody: ArrayBuffer | null;
+};
+
+async function parseRequest(c: any): Promise<ParsedRequest> {
+  const rawReq = c.req.raw as Request;
+  const contentType = c.req.header('Content-Type') || null;
+  let rawBody: ArrayBuffer | null = null;
+  let model: string | null = null;
+
+  if (rawReq.body) {
+    rawBody = await rawReq.arrayBuffer();
+  }
+
+  if (contentType && rawBody) {
+    if (contentType.includes('application/json')) {
+      const text = new TextDecoder().decode(rawBody);
+      try {
+        const body = JSON.parse(text) as { model?: string };
+        if (body && typeof body.model === 'string') model = body.model;
+      } catch {
+        // ignore parse errors, request may be non-JSON despite header
+      }
+    } else if (contentType.includes('multipart/form-data')) {
+      const parseReq = new Request('http://local/form', {
+        method: 'POST',
+        headers: { 'Content-Type': contentType },
+        body: rawBody,
+      });
+      const form = await parseReq.formData().catch(() => null);
+      const formModel = form?.get('model');
+      if (typeof formModel === 'string') model = formModel;
+    } else if (contentType.includes('application/x-www-form-urlencoded')) {
+      const text = new TextDecoder().decode(rawBody);
+      const params = new URLSearchParams(text);
+      const formModel = params.get('model');
+      if (formModel) model = formModel;
+    }
+  }
+
+  return { model, contentType, rawBody };
+}
+
+async function handleProxy(c: any, endpointPath: string) {
   const db = c.get('db') as Database;
   const startTime = Date.now();
-  const authHeader = c.req.header('Authorization');
-  const apiKey = extractApiKey(authHeader);
+  const debugEnabled = c.req.header('x-debug') === '1';
+  const apiKey = extractApiKey(c);
 
   if (!apiKey) {
-    return c.json({ error: 'Authorization required', code: 'unauthorized' }, 401);
+    return c.json({ error: 'API key required', code: 'unauthorized' }, 401);
   }
 
   const keyHash = hashKey(apiKey);
@@ -84,15 +141,14 @@ router.all('/ai/chat/completions', async (c) => {
     }
 
     // 4. Parse request body to check model
-    const body = await c.req.json().catch(() => ({}));
-    const requestedModel = body.model;
+    const { model: requestedModel, contentType, rawBody } = await parseRequest(c);
 
-    if (!requestedModel) {
+    if (!requestedModel && c.req.method !== 'GET') {
       return c.json({ error: 'Model is required', code: 'model_required' }, 400);
     }
 
     // 5. Check model allow-list
-    if (key.allowed_models && key.allowed_models.length > 0) {
+    if (requestedModel && key.allowed_models && key.allowed_models.length > 0) {
       if (!key.allowed_models.includes(requestedModel)) {
         return c.json({
           error: `Model "${requestedModel}" not allowed for this key`,
@@ -111,34 +167,67 @@ router.all('/ai/chat/completions', async (c) => {
       return c.json({ error: 'AI Gateway not configured', code: 'gateway_not_configured' }, 503);
     }
 
-    // 7. Forward request to Cloudflare AI Gateway (BYOK)
-    const provider = inferProvider(requestedModel);
-    const cfUrl = `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${cfGatewayId}/${provider}/chat/completions`;
+    // 7. Fetch customer's provider keys
+    const customerData = await db.query.customers.findFirst({
+      where: eq(schema.customers.id, key.customer_id),
+      columns: { provider_keys: true },
+    });
 
-    const providerKey = c.req.header('X-Provider-Key');
-    // Unified billing: no provider key required. BYOK: pass X-Provider-Key.
+    const providerKeys = (customerData?.provider_keys || {}) as Record<string, { key: string; enabled: boolean }>;
+    const provider = requestedModel ? inferProvider(requestedModel) : 'openai';
+    
+    // Check if provider is configured and enabled
+    const providerConfig = providerKeys[provider];
+    if (!providerConfig || !providerConfig.enabled) {
+      return c.json({ 
+        error: `Provider "${provider}" not configured. Please ask your admin to configure ${provider} API keys in settings.`, 
+        code: 'provider_not_configured' 
+      }, 400);
+    }
+
+    // Decrypt provider key
+    const xorKey = process.env.PROVIDER_KEY_ENCRYPTION_SECRET || 'default-secret-change-me';
+    const encryptedKey = providerConfig.key;
+    const buffer = Buffer.from(encryptedKey, 'base64');
+    let providerApiKey = '';
+    for (let i = 0; i < buffer.length; i++) {
+      providerApiKey += String.fromCharCode(buffer[i] ^ xorKey.charCodeAt(i % xorKey.length));
+    }
+
+    const cfUrl = `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${cfGatewayId}/${provider}${endpointPath}`;
+
+    // Forward with provider key (BYOK)
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       'cf-aig-authorization': `Bearer ${cfApiToken}`,
+      'Authorization': `Bearer ${providerApiKey}`,
     };
-    if (providerKey) {
-      headers.Authorization = `Bearer ${providerKey}`;
+    if (contentType) {
+      headers['Content-Type'] = contentType;
     }
 
     const cfResponse = await fetch(cfUrl, {
-      method: 'POST',
+      method: c.req.method,
       headers,
-      body: JSON.stringify(body),
+      body: rawBody ? Buffer.from(rawBody) : undefined,
     });
 
-    const responseBody = await cfResponse.json() as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
+    const responseContentType = cfResponse.headers.get('content-type') || '';
+    const isJson = responseContentType.includes('application/json');
+    let responseBody: { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } } | null = null;
+    if (isJson) {
+      try {
+        responseBody = await cfResponse.json() as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
+      } catch {
+        responseBody = null;
+      }
+    }
     const endTime = Date.now();
     const durationMs = endTime - startTime;
 
     // 8. Extract token usage
-    const promptTokens = responseBody.usage?.prompt_tokens || 0;
-    const completionTokens = responseBody.usage?.completion_tokens || 0;
-    const totalTokens = responseBody.usage?.total_tokens || (promptTokens + completionTokens);
+    const promptTokens = responseBody?.usage?.prompt_tokens || 0;
+    const completionTokens = responseBody?.usage?.completion_tokens || 0;
+    const totalTokens = responseBody?.usage?.total_tokens || (promptTokens + completionTokens);
 
     // 9. Record gateway usage event (best-effort)
     const telemetryUserId = key.user_id ?? key.created_by_user_id ?? key.customer?.user_id ?? null;
@@ -148,7 +237,7 @@ router.all('/ai/chat/completions', async (c) => {
       key_hash: key.key_hash,
       user_id: telemetryUserId,
       team_id: key.team_id,
-      model: requestedModel,
+      model: requestedModel || 'unknown',
       provider,
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
@@ -168,7 +257,7 @@ router.all('/ai/chat/completions', async (c) => {
       customerId: key.customer_id,
       userId: telemetryUserId,
       teamId: key.team_id,
-      model: requestedModel,
+      model: requestedModel || 'unknown',
       provider,
       promptTokens,
       completionTokens,
@@ -180,7 +269,22 @@ router.all('/ai/chat/completions', async (c) => {
     }
 
     // 11. Return response to client
-    return c.json(responseBody, cfResponse.status as any);
+    if (isJson) {
+      const jsonResponse = c.json(responseBody, cfResponse.status as any);
+      if (debugEnabled) {
+        jsonResponse.headers.set('x-stereos-upstream-url', cfUrl);
+        jsonResponse.headers.set('x-stereos-upstream-status', String(cfResponse.status));
+      }
+      return jsonResponse;
+    }
+    const binary = await cfResponse.arrayBuffer();
+    const headersOut: Record<string, string> = {};
+    if (responseContentType) headersOut['Content-Type'] = responseContentType;
+    if (debugEnabled) {
+      headersOut['x-stereos-upstream-url'] = cfUrl;
+      headersOut['x-stereos-upstream-status'] = String(cfResponse.status);
+    }
+    return new Response(binary, { status: cfResponse.status, headers: headersOut });
 
   } catch (error) {
     console.error('AI Proxy error:', error);
@@ -189,7 +293,16 @@ router.all('/ai/chat/completions', async (c) => {
       code: 'internal_error'
     }, 500);
   }
-});
+}
+
+// Main proxy endpoint — OpenAI-compatible paths
+router.all('/chat/completions', (c) => handleProxy(c, '/chat/completions'));
+router.all('/responses', (c) => handleProxy(c, '/responses'));
+router.all('/embeddings', (c) => handleProxy(c, '/embeddings'));
+router.all('/images/generations', (c) => handleProxy(c, '/images/generations'));
+router.all('/audio/transcriptions', (c) => handleProxy(c, '/audio/transcriptions'));
+router.all('/audio/speech', (c) => handleProxy(c, '/audio/speech'));
+router.all('/moderations', (c) => handleProxy(c, '/moderations'));
 
 // Infer provider from model name
 function inferProvider(model: string): string {

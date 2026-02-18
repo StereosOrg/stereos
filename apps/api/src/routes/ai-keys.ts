@@ -419,11 +419,11 @@ router.delete('/ai/keys/:hash', requireAuth, requireAdminOrManager, async (c) =>
 // Models available through the AI Gateway
 const SUPPORTED_MODELS = [
   // OpenAI
-  'gpt-5.2',
-  'gpt-5-nano',
-  'gpt-5',
-  'gpt-5-mini',
-  'gpt-4.1',
+  'openai/gpt-5.2',
+  'openai/gpt-5-nano',
+  'openai/gpt-5"',
+  'openai/gpt-5-mini',
+  'openai/gpt-4.1',
   // Anthropic
   'anthropic/claude-opus-4-6',
   'anthropic/claude-sonnet-4-5',
@@ -450,7 +450,7 @@ router.get('/ai/gateway', requireAuth, requireAdminOrManager, async (c) => {
     cf_gateway_id: customer.cf_gateway_id,
     cf_account_id: cfAccountId || null,
     proxy_url: customer.cf_gateway_id
-      ? `${baseUrl}/v1/ai/chat/completions`
+      ? `${baseUrl}/v1/chat/completions`
       : null,
     inference_url: customer.cf_gateway_id && cfAccountId
       ? `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${customer.cf_gateway_id}/openai`

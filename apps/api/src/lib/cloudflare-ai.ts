@@ -181,3 +181,49 @@ export async function listCfModels(
   const json = await res.json() as { result: CfModel[] };
   return json.result;
 }
+
+// Provider key configuration for BYOK (Bring Your Own Keys)
+export type CfProviderKeys = {
+  openai?: { token: string };
+  anthropic?: { token: string };
+  azure?: { token: string; resource_name?: string };
+  google?: { token: string };
+  groq?: { token: string };
+  cerebras?: { token: string };
+  mistral?: { token: string };
+  cohere?: { token: string };
+  // Add more providers as needed
+};
+
+export async function updateCfProviderKeys(
+  accountId: string,
+  apiToken: string,
+  gatewayId: string,
+  providerKeys: CfProviderKeys
+): Promise<void> {
+  const res = await fetch(
+    `${CF_API_BASE}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiToken}`,
+      },
+      body: JSON.stringify({
+        collect_logs: false,
+        rate_limiting_limit: 0,
+        rate_limiting_interval: 0,
+        rate_limiting_technique: 'fixed',
+        cache_ttl: 0,
+        cache_invalidate_on_update: true,
+        authentication: true,
+        zdr: true,
+        providers: providerKeys,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`CF AI Gateway provider keys update failed: ${res.status} ${text}`);
+  }
+}

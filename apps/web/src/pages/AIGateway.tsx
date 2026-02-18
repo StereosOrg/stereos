@@ -35,7 +35,7 @@ const inlineSelectStyle: React.CSSProperties = {
 };
 
 type Provider = 'openai' | 'anthropic';
-type SdkType = 'js' | 'python' | 'curl';
+type SdkType = 'vercel' | 'js' | 'python' | 'curl';
 
 function buildSnippet(
   provider: Provider,
@@ -45,68 +45,65 @@ function buildSnippet(
   const proxyUrl = baseUrl;
 
   const model = provider === 'openai' ? 'gpt-4o' : 'claude-sonnet-4-5-20250929';
-  const providerKeyPlaceholder = provider === 'openai' ? '{openai_api_key}' : '{anthropic_api_key}';
+  const virtualKeyPlaceholder = '{your_virtual_key}';
+  const apiKeyPlaceholder = virtualKeyPlaceholder;
+
+  if (sdk === 'vercel') {
+    return `import { generateText } from "ai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+
+const stereos = createOpenAICompatible({
+  baseURL: "${proxyUrl}",
+  apiKey: "${apiKeyPlaceholder}",
+});
+
+const { text } = await generateText({
+  model: stereos("${model}"),
+  prompt: "Hello, world!",
+});
+
+console.log(text);`;
+  }
 
   if (sdk === 'js') {
-    if (provider === 'openai') {
-      return `import OpenAI from "openai";
-
-const client = new OpenAI({
-  apiKey: "${providerKeyPlaceholder}",
-  baseURL: "${proxyUrl}",
+    return `const response = await fetch("${proxyUrl}/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer ${apiKeyPlaceholder}",
+  },
+  body: JSON.stringify({
+    model: "${model}",
+    messages: [{ role: "user", content: "Hello, world!" }],
+  }),
 });
 
-const response = await client.chat.completions.create({
-  model: "${model}",
-  messages: [{ role: "user", content: "Hello, world!" }],
-});`;
-    }
-    return `import Anthropic from "@anthropic-ai/sdk";
-
-const client = new Anthropic({
-  apiKey: "${providerKeyPlaceholder}",
-  baseURL: "${proxyUrl}",
-});
-
-const response = await client.messages.create({
-  model: "${model}",
-  max_tokens: 1024,
-  messages: [{ role: "user", content: "Hello, world!" }],
-});`;
+const data = await response.json();
+console.log(data.choices?.[0]?.message?.content);`;
   }
 
   if (sdk === 'python') {
-    if (provider === 'openai') {
-      return `from openai import OpenAI
+    return `import requests
 
-client = OpenAI(
-    api_key="${providerKeyPlaceholder}",
-    base_url="${proxyUrl}",
+response = requests.post(
+    "${proxyUrl}/chat/completions",
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer ${apiKeyPlaceholder}",
+    },
+    json={
+        "model": "${model}",
+        "messages": [{"role": "user", "content": "Hello, world!"}],
+    },
 )
 
-response = client.chat.completions.create(
-    model="${model}",
-    messages=[{"role": "user", "content": "Hello, world!"}],
-)`;
-    }
-    return `from anthropic import Anthropic
-
-client = Anthropic(
-    api_key="${providerKeyPlaceholder}",
-    base_url="${proxyUrl}",
-)
-
-response = client.messages.create(
-    model="${model}",
-    max_tokens=1024,
-    messages=[{"role": "user", "content": "Hello, world!"}],
-)`;
+data = response.json()
+print(data.get("choices", [{}])[0].get("message", {}).get("content"))`;
   }
 
   // curl
-  return `curl ${proxyUrl}/ai/chat/completions \\
-  -H "Authorization: Bearer {your_virtual_key}" \\
-  -H "X-Provider-Key: ${providerKeyPlaceholder}" \\
+  return `curl ${proxyUrl}/chat/completions \\
+  -H "Authorization: Bearer ${apiKeyPlaceholder}" \\
   -H "Content-Type: application/json" \\
   -d '{
   "model": "${model}",
@@ -123,7 +120,7 @@ export function AIGateway() {
   const [otelUrl, setOtelUrl] = useState(DEFAULT_OTEL_URL);
   const [otelMessage, setOtelMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [provider, setProvider] = useState<Provider>('openai');
-  const [sdk, setSdk] = useState<SdkType>('js');
+  const [sdk, setSdk] = useState<SdkType>('vercel');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
 
   const { data, isLoading } = useQuery<GatewayData>({
@@ -347,13 +344,17 @@ export function AIGateway() {
                   onChange={(e) => setSdk(e.target.value as SdkType)}
                   style={inlineSelectStyle}
                 >
-                  <option value="js">{provider === 'openai' ? 'OpenAI' : 'Anthropic'} JS SDK</option>
-                  <option value="python">{provider === 'openai' ? 'OpenAI' : 'Anthropic'} Python SDK</option>
+                  <option value="vercel">Vercel AI SDK</option>
+                  <option value="js">OpenAI-compatible JS SDK</option>
+                  <option value="python">OpenAI-compatible Python SDK</option>
                   <option value="curl">cURL</option>
                 </select>
                 <ChevronDown size={14} style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: '#666' }} />
               </div>
             </div>
+            <p style={{ margin: '-6px 0 16px', fontSize: '13px', color: '#666' }}>
+              Use your virtual key as the SDK `apiKey` (or `Authorization: Bearer`). Provider keys are not required when Unified Billing is enabled.
+            </p>
 
             {/* Code block */}
             <div style={{ position: 'relative' }}>

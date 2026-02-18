@@ -11,6 +11,7 @@ import {
   Cloud,
   Shield,
   Activity,
+  Lock,
 } from 'lucide-react';
 import { API_BASE, BEARER_TOKEN_KEY, getAuthHeaders } from '../lib/api';
 import { authClient } from '../lib/auth-client';
@@ -30,11 +31,13 @@ export function Layout() {
   });
   const profileUser = (session?.user && (session.user as { role?: string }).role) ? session.user : me?.user ?? session?.user;
   const isAdminOrManager = !!profileUser && 'role' in profileUser && (profileUser.role === 'admin' || profileUser.role === 'manager');
+  const isAdmin = !!profileUser && 'role' in profileUser && profileUser.role === 'admin';
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
     ...(isAdminOrManager ? [{ path: '/keys', label: 'Keys', icon: Key }] : []),
     ...(isAdminOrManager ? [{ path: '/ai-gateway', label: 'AI Gateway', icon: Cloud }] : []),
+    ...(isAdmin ? [{ path: '/provider-keys', label: 'Provider Keys', icon: Lock }] : []),
     ...(isAdminOrManager ? [{ path: '/dlp', label: 'DLP', icon: Shield }] : []),
     ...(isAdminOrManager ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
     ...(isAdminOrManager ? [{ path: '/span-logs', label: 'Span logs', icon: Activity }] : []),
