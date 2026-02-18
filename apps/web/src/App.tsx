@@ -1,4 +1,6 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { posthog } from './lib/posthog';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Dashboard } from './pages/Dashboard';
@@ -26,6 +28,14 @@ import { SpanDetail } from './pages/SpanDetail';
 import { TeamProfile } from './pages/TeamProfile';
 import { Teams } from './pages/Teams';
 
+function PageviewTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    posthog.capture('$pageview');
+  }, [location.pathname]);
+  return null;
+}
+
 function ProtectedLayout() {
   return (
     <ProtectedRoute>
@@ -36,6 +46,8 @@ function ProtectedLayout() {
 
 function App() {
   return (
+    <>
+    <PageviewTracker />
     <Routes>
       {/* Auth routes */}
       <Route path="/auth/sign-in" element={<SignIn />} />
@@ -75,6 +87,7 @@ function App() {
       {/* Catch all - redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
 
