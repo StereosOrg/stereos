@@ -160,8 +160,8 @@ export function KeyDetail() {
         <h2 className="heading-3" style={{ marginBottom: '16px' }}>Key details</h2>
         <div style={{ display: 'grid', gap: '16px' }}>
           <DetailRow label="Key hash" value={k.key_hash} monospace />
-          <DetailRow label="Budget" value={k.budget_usd != null ? `$${parseFloat(String(k.budget_usd)).toFixed(2)}` : '—'} />
-          <DetailRow label="Budget remaining" value={k.budget_remaining != null ? `$${k.budget_remaining.toFixed(2)}` : '—'} />
+          <DetailRow label="Budget" value={k.budget_usd != null ? fmtUsd(parseFloat(String(k.budget_usd))) : '—'} />
+          <DetailRow label="Budget remaining" value={k.budget_remaining != null ? fmtUsd(k.budget_remaining) : '—'} />
           <DetailRow label="Budget reset" value={k.budget_reset ?? '—'} />
           <DetailRow label="Allowed models" value={k.allowed_models?.join(', ') ?? 'All models'} />
           <DetailRow label="Scope" value={scopeLabel} />
