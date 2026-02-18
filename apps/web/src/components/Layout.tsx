@@ -10,6 +10,7 @@ import {
   LogOut,
   Cloud,
   Shield,
+  Activity,
 } from 'lucide-react';
 import { API_BASE, BEARER_TOKEN_KEY, getAuthHeaders } from '../lib/api';
 import { authClient } from '../lib/auth-client';
@@ -36,6 +37,7 @@ export function Layout() {
     ...(isAdminOrManager ? [{ path: '/ai-gateway', label: 'AI Gateway', icon: Cloud }] : []),
     ...(isAdminOrManager ? [{ path: '/dlp', label: 'DLP', icon: Shield }] : []),
     ...(isAdminOrManager ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
+    ...(isAdminOrManager ? [{ path: '/span-logs', label: 'Span logs', icon: Activity }] : []),
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
     { path: '/billing', label: 'Billing', icon: CreditCard },

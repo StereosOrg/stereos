@@ -213,7 +213,7 @@ export function StartTrial() {
         <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', lineHeight: 1.8, color: 'var(--dark)' }}>
           <li>Telemetry events — $0.0025 per event</li>
           <li>Managed OpenRouter keys — per key</li>
-          <li>Flat monthly base — $450/mo</li>
+          <li>Flat monthly base — $2400/mo</li>
         </ul>
       </div>
       <div

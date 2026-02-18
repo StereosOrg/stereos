@@ -1088,13 +1088,13 @@ export declare const apiTokens: import("drizzle-orm/pg-core").PgTableWithColumns
     };
     dialect: "pg";
 }>;
-export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColumns<{
-    name: "UsageEvent";
+export declare const gatewayEvents: import("drizzle-orm/pg-core").PgTableWithColumns<{
+    name: "GatewayEvent";
     schema: undefined;
     columns: {
         id: import("drizzle-orm/pg-core").PgColumn<{
             name: "id";
-            tableName: "UsageEvent";
+            tableName: "GatewayEvent";
             dataType: "string";
             columnType: "PgText";
             data: string;
@@ -1111,7 +1111,7 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
         }, {}, {}>;
         customer_id: import("drizzle-orm/pg-core").PgColumn<{
             name: "customer_id";
-            tableName: "UsageEvent";
+            tableName: "GatewayEvent";
             dataType: "string";
             columnType: "PgText";
             data: string;
@@ -1126,9 +1126,9 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        event_type: import("drizzle-orm/pg-core").PgColumn<{
-            name: "event_type";
-            tableName: "UsageEvent";
+        key_id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "key_id";
+            tableName: "GatewayEvent";
             dataType: "string";
             columnType: "PgText";
             data: string;
@@ -1143,9 +1143,9 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        idempotency_key: import("drizzle-orm/pg-core").PgColumn<{
-            name: "idempotency_key";
-            tableName: "UsageEvent";
+        key_hash: import("drizzle-orm/pg-core").PgColumn<{
+            name: "key_hash";
+            tableName: "GatewayEvent";
             dataType: "string";
             columnType: "PgText";
             data: string;
@@ -1160,9 +1160,77 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        quantity: import("drizzle-orm/pg-core").PgColumn<{
-            name: "quantity";
-            tableName: "UsageEvent";
+        user_id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "user_id";
+            tableName: "GatewayEvent";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        team_id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "team_id";
+            tableName: "GatewayEvent";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        model: import("drizzle-orm/pg-core").PgColumn<{
+            name: "model";
+            tableName: "GatewayEvent";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        provider: import("drizzle-orm/pg-core").PgColumn<{
+            name: "provider";
+            tableName: "GatewayEvent";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        prompt_tokens: import("drizzle-orm/pg-core").PgColumn<{
+            name: "prompt_tokens";
+            tableName: "GatewayEvent";
             dataType: "number";
             columnType: "PgInteger";
             data: number;
@@ -1177,13 +1245,13 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        unit_price: import("drizzle-orm/pg-core").PgColumn<{
-            name: "unit_price";
-            tableName: "UsageEvent";
-            dataType: "string";
-            columnType: "PgNumeric";
-            data: string;
-            driverParam: string;
+        completion_tokens: import("drizzle-orm/pg-core").PgColumn<{
+            name: "completion_tokens";
+            tableName: "GatewayEvent";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
             notNull: true;
             hasDefault: true;
             isPrimaryKey: false;
@@ -1194,13 +1262,13 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        total_price: import("drizzle-orm/pg-core").PgColumn<{
-            name: "total_price";
-            tableName: "UsageEvent";
-            dataType: "string";
-            columnType: "PgNumeric";
-            data: string;
-            driverParam: string;
+        total_tokens: import("drizzle-orm/pg-core").PgColumn<{
+            name: "total_tokens";
+            tableName: "GatewayEvent";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
             notNull: true;
             hasDefault: true;
             isPrimaryKey: false;
@@ -1211,14 +1279,14 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        metadata: import("drizzle-orm/pg-core").PgColumn<{
-            name: "metadata";
-            tableName: "UsageEvent";
-            dataType: "json";
-            columnType: "PgJsonb";
-            data: unknown;
-            driverParam: unknown;
-            notNull: false;
+        status_code: import("drizzle-orm/pg-core").PgColumn<{
+            name: "status_code";
+            tableName: "GatewayEvent";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
+            notNull: true;
             hasDefault: false;
             isPrimaryKey: false;
             isAutoincrement: false;
@@ -1228,9 +1296,26 @@ export declare const usageEvents: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
-        timestamp: import("drizzle-orm/pg-core").PgColumn<{
-            name: "timestamp";
-            tableName: "UsageEvent";
+        duration_ms: import("drizzle-orm/pg-core").PgColumn<{
+            name: "duration_ms";
+            tableName: "GatewayEvent";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
+            notNull: true;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        created_at: import("drizzle-orm/pg-core").PgColumn<{
+            name: "created_at";
+            tableName: "GatewayEvent";
             dataType: "date";
             columnType: "PgTimestamp";
             data: Date;
@@ -1951,7 +2036,7 @@ export declare const apiTokensRelations: import("drizzle-orm").Relations<"ApiTok
 export declare const customersRelations: import("drizzle-orm").Relations<"Customer", {
     user: import("drizzle-orm").One<"User", true>;
     apiTokens: import("drizzle-orm").Many<"ApiToken">;
-    usageEvents: import("drizzle-orm").Many<"UsageEvent">;
+    gatewayEvents: import("drizzle-orm").Many<"GatewayEvent">;
     provenanceEvents: import("drizzle-orm").Many<"ProvenanceEvent">;
     invites: import("drizzle-orm").Many<"Invite">;
     members: import("drizzle-orm").Many<"CustomerMember">;

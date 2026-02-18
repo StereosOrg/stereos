@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { and, eq, sql, desc, or, isNull, inArray } from 'drizzle-orm';
-import { teams, teamMembers, users, telemetrySpans } from '@stereos/shared/schema';
+import { teams, teamMembers, users, telemetrySpans, gatewayEvents } from '@stereos/shared/schema';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
 import { sessionOrTokenAuth } from '../lib/api-token.js';
 import type { AppVariables } from '../types/app.js';
@@ -205,23 +205,25 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
   const team = await db.query.teams.findFirst({ where: eq(teams.id, teamId) });
   if (!team || team.archived_at) return c.json({ error: 'Team not found' }, 404);
 
-  // Include spans with team_id = teamId OR (team_id IS NULL and user is a team member)
-  const teamSpanCondition = sql`(team_id = ${teamId} OR (team_id IS NULL AND user_id IN (SELECT user_id FROM "TeamMember" WHERE team_id = ${teamId})))`;
+  // Include usage with team_id = teamId OR (team_id IS NULL and user is a team member)
+  const teamUsageCondition = sql`(team_id = ${teamId} OR (team_id IS NULL AND user_id IN (SELECT user_id FROM "TeamMember" WHERE team_id = ${teamId})))`;
 
   const totalsResult = await db.execute(sql`
     SELECT
-      COUNT(*)::int AS total_spans,
-      COUNT(DISTINCT trace_id)::int AS total_traces,
-      COUNT(*) FILTER (WHERE status_code = 'ERROR')::int AS total_errors,
-      MIN(start_time) AS first_activity,
-      MAX(start_time) AS last_activity
-    FROM "TelemetrySpan"
-    WHERE ${teamSpanCondition}
+      COUNT(*)::int AS total_requests,
+      COALESCE(SUM(total_tokens), 0)::int AS total_tokens,
+      COUNT(*) FILTER (WHERE status_code >= 400)::int AS total_errors,
+      MIN(created_at) AS first_activity,
+      MAX(created_at) AS last_activity
+    FROM "GatewayEvent"
+    WHERE ${teamUsageCondition}
   `);
   const totalsRow = Array.isArray(totalsResult) ? totalsResult[0] : (totalsResult as { rows?: unknown[] })?.rows?.[0];
 
   const memberIds = await db.select({ user_id: teamMembers.user_id }).from(teamMembers).where(eq(teamMembers.team_id, teamId));
   const memberUserIds = memberIds.map((m) => m.user_id);
+  const teamSpanCondition = sql`(team_id = ${teamId} OR (team_id IS NULL AND user_id IN (SELECT user_id FROM "TeamMember" WHERE team_id = ${teamId})))`;
+  // Observability: recent spans
   const recentSpans = await db.query.telemetrySpans.findMany({
     where: memberUserIds.length > 0
       ? or(eq(telemetrySpans.team_id, teamId), and(isNull(telemetrySpans.team_id), inArray(telemetrySpans.user_id, memberUserIds)))
@@ -239,32 +241,32 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
 
   const activeMembersResult = await db.execute(sql`
     SELECT COUNT(DISTINCT user_id)::int AS active_members
-    FROM "TelemetrySpan"
-    WHERE ${teamSpanCondition}
+    FROM "GatewayEvent"
+    WHERE ${teamUsageCondition}
       AND user_id IS NOT NULL
-      AND start_time >= NOW() - INTERVAL '30 days'
+      AND created_at >= NOW() - INTERVAL '30 days'
   `);
   const activeRow = Array.isArray(activeMembersResult) ? activeMembersResult[0] : (activeMembersResult as { rows?: unknown[] })?.rows?.[0];
 
-  const topVendorsResult = await db.execute(sql`
-    SELECT vendor, COUNT(*)::int AS span_count
-    FROM "TelemetrySpan"
-    WHERE ${teamSpanCondition}
-      AND start_time >= NOW() - INTERVAL '30 days'
-    GROUP BY vendor
-    ORDER BY span_count DESC
+  const topModelsResult = await db.execute(sql`
+    SELECT model, COUNT(*)::int AS request_count
+    FROM "GatewayEvent"
+    WHERE ${teamUsageCondition}
+      AND created_at >= NOW() - INTERVAL '30 days'
+    GROUP BY model
+    ORDER BY request_count DESC
     LIMIT 5
   `);
-  const topVendorRows = Array.isArray(topVendorsResult)
-    ? topVendorsResult
-    : (topVendorsResult as { rows?: unknown[] })?.rows ?? [];
-  const topVendors = topVendorRows.map((r: any) => ({
-    vendor: String(r.vendor),
-    span_count: Number(r.span_count ?? 0),
+  const topModelRows = Array.isArray(topModelsResult)
+    ? topModelsResult
+    : (topModelsResult as { rows?: unknown[] })?.rows ?? [];
+  const topModels = topModelRows.map((r: any) => ({
+    model: String(r.model),
+    request_count: Number(r.request_count ?? 0),
   }));
 
-  const errorRate = Number((totalsRow as Record<string, unknown>)?.total_spans ?? 0) > 0
-    ? Number((totalsRow as Record<string, unknown>)?.total_errors ?? 0) / Number((totalsRow as Record<string, unknown>)?.total_spans ?? 1)
+  const errorRate = Number((totalsRow as Record<string, unknown>)?.total_requests ?? 0) > 0
+    ? Number((totalsRow as Record<string, unknown>)?.total_errors ?? 0) / Number((totalsRow as Record<string, unknown>)?.total_requests ?? 1)
     : 0;
 
   const recentDiffsResult = await db.execute(sql`
@@ -287,27 +289,27 @@ router.get('/teams/:teamId/profile', requireAuth, async (c) => {
 
   const tracesPerMemberResult = await db.execute(sql`
     SELECT
-      COUNT(DISTINCT trace_id)::float / NULLIF(COUNT(DISTINCT user_id), 0) AS traces_per_member
-    FROM "TelemetrySpan"
-    WHERE ${teamSpanCondition}
+      COUNT(*)::float / NULLIF(COUNT(DISTINCT user_id), 0) AS requests_per_member
+    FROM "GatewayEvent"
+    WHERE ${teamUsageCondition}
       AND user_id IS NOT NULL
-      AND start_time >= NOW() - INTERVAL '30 days'
+      AND created_at >= NOW() - INTERVAL '30 days'
   `);
   const tracesRow = Array.isArray(tracesPerMemberResult) ? tracesPerMemberResult[0] : (tracesPerMemberResult as { rows?: unknown[] })?.rows?.[0];
 
   return c.json({
     team,
     stats: {
-      total_spans: Number((totalsRow as Record<string, unknown>)?.total_spans ?? 0),
-      total_traces: Number((totalsRow as Record<string, unknown>)?.total_traces ?? 0),
+      total_requests: Number((totalsRow as Record<string, unknown>)?.total_requests ?? 0),
+      total_tokens: Number((totalsRow as Record<string, unknown>)?.total_tokens ?? 0),
       total_errors: Number((totalsRow as Record<string, unknown>)?.total_errors ?? 0),
       active_members: Number((activeRow as Record<string, unknown>)?.active_members ?? 0),
       error_rate: errorRate,
-      traces_per_member: Number((tracesRow as Record<string, unknown>)?.traces_per_member ?? 0),
+      requests_per_member: Number((tracesRow as Record<string, unknown>)?.requests_per_member ?? 0),
       first_activity: (totalsRow as Record<string, unknown>)?.first_activity ?? null,
       last_activity: (totalsRow as Record<string, unknown>)?.last_activity ?? null,
     },
-    top_vendors: topVendors,
+    top_models: topModels,
     recent_diffs: recentDiffs,
     recent_spans: recentSpans.map((s) => ({
       id: s.id,

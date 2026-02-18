@@ -151,18 +151,30 @@ function OpenAIIcon({ size = 24, className }: { size?: number; className?: strin
 
 // Codex logo used for OpenAI (merged vendor: codex + openai)
 const OPENAI_CODEX_LOGO = 'https://images.icon-icons.com/3913/PNG/512/openai_logo_icon_248315.png';
+const OPENAI_LOGO = 'https://assets.streamlinehq.com/image/private/w_240,h_240,ar_1/f_auto/v1/icons/technology/openai_1-moa3pqsiii7l4dkheifi8.png/openai_1-gv7rd0u7lcncyfalyjodt.png?_a=DATAiZAAZAA0';
 const CLAUDE_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/claude-color.png';
 const KILO_CODE_LOGO = 'https://www.searchyour.ai/archivos/kilo-code-ai-logo.jpg';
+const MISTRAL_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/mistral-color.png';
+const HUGGINGFACE_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/huggingface-color.png';
+const GROK_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/grok.png';
+const MICROSOFT_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/microsoft-color.png';
+const ANTHROPIC_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/anthropic.png';
+const GEMINI_LOGO = 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png';
 
 const VENDOR_LOGOS: Record<string, string | React.ComponentType<{ size?: number; className?: string }>> = {
-  'cloudflare-workers': 'https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/1/cloudflare-workers-icon-jsii6pml8tdp4sy8kgarwe.png/cloudflare-workers-icon-gfyr5fw7aqcwsa1on45oem.png?_a=DATAiZAAZAA0',
   cursor: CursorIcon,
   vscode: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Visual_Studio_Code_1.35_icon.svg/3840px-Visual_Studio_Code_1.35_icon.svg.png',
   arcade: '/vendors/arcade.svg',
   e2b: '/vendors/e2b.svg',
   anthropic: CLAUDE_LOGO,
   'google-gemini': GeminiIcon,
-  openai: OPENAI_CODEX_LOGO,
+  mistral: MISTRAL_LOGO,
+  huggingface: HUGGINGFACE_LOGO,
+  grok: GROK_LOGO,
+  microsoft: MICROSOFT_LOGO,
+  'anthropic-logo': ANTHROPIC_LOGO,
+  'gemini-logo': GEMINI_LOGO,
+  openai: OPENAI_LOGO,
   codex: OPENAI_CODEX_LOGO, // legacy: existing profiles may still have vendor=codex
   'kilo-code': KILO_CODE_LOGO,
   openrouter: 'https://uxwing.com/wp-content/themes/uxwing/download/brands-and-social-media/openrouter-icon.png',
@@ -184,6 +196,25 @@ export const LLM_PROVIDERS: LLMProviderInfo[] = [
   { slug: 'kilo-code', displayName: 'Kilo Code', icon: KiloCodeIcon, color: '#00d4aa' },
 ];
 
+export function getVendorBrand(input?: string | null): { key: string; label: string } | null {
+  if (!input) return null;
+  const value = input.toLowerCase().trim();
+
+  if (value === 'cloudflare-workers' || value.includes('cloudflare-workers')) return { key: 'openai', label: 'OpenAI' };
+  if (value.includes('openai') || value.includes('gpt') || value.startsWith('o1') || value.startsWith('o3')) {
+    return { key: 'openai', label: 'OpenAI' };
+  }
+  if (value.includes('anthropic')) return { key: 'anthropic-logo', label: 'Anthropic' };
+  if (value.includes('claude')) return { key: 'anthropic', label: 'Claude' };
+  if (value.includes('gemini')) return { key: 'gemini-logo', label: 'Gemini' };
+  if (value.includes('mistral')) return { key: 'mistral', label: 'Mistral' };
+  if (value.includes('huggingface') || value.includes('hf/')) return { key: 'huggingface', label: 'Hugging Face' };
+  if (value.includes('grok')) return { key: 'grok', label: 'Grok' };
+  if (value.includes('microsoft') || value.includes('azure') || value.includes('phi')) return { key: 'microsoft', label: 'Microsoft' };
+
+  return null;
+}
+
 interface VendorIconProps {
   vendor: string;
   displayName?: string;
@@ -192,13 +223,16 @@ interface VendorIconProps {
 }
 
 export function VendorIcon({ vendor, displayName, size = 32, className }: VendorIconProps) {
-  const logo = VENDOR_LOGOS[vendor];
+  const brand = getVendorBrand(vendor);
+  const resolvedKey = brand?.key ?? vendor;
+  const resolvedName = brand?.label ?? displayName ?? vendor;
+  const logo = VENDOR_LOGOS[resolvedKey];
 
   if (typeof logo === 'string') {
     return (
       <img
         src={logo}
-        alt={displayName || vendor}
+        alt={resolvedName}
         className={className}
         style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }}
       />
@@ -211,7 +245,7 @@ export function VendorIcon({ vendor, displayName, size = 32, className }: Vendor
   }
 
   // Letter-badge fallback
-  const letter = (displayName || vendor || '?').charAt(0).toUpperCase();
+  const letter = (resolvedName || '?').charAt(0).toUpperCase();
   return (
     <div
       className={className}

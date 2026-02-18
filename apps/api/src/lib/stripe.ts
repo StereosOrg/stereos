@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import type { Database } from '@stereos/shared/db';
-import { customers, usageEvents, referrals } from '@stereos/shared/schema';
+import { customers, referrals } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 
 // Custom checkout (ui_mode: 'custom') requires 2025-03-31.basil; Stripe Node types may still reference acacia.
@@ -17,8 +17,8 @@ const env = (key: string, fallback: string): string =>
 export const PRICE_ID_TELEMETRY_EVENTS = env('STRIPE_PRICE_TELEMETRY_EVENTS', 'price_1SzCuEFRJliLrxglL7b3fpHW');
 export const TELEMETRY_EVENTS_UNIT_PRICE = 0.0025;
 
-/** Flat monthly: $450/mo (recurring line item) */
-export const PRICE_ID_FLAT_MONTHLY = env('STRIPE_PRICE_FLAT_MONTHLY', 'price_1SzCv0FRJliLrxglgIuO5cdX');
+/** Flat monthly: $2400/mo (recurring line item) */
+export const PRICE_ID_FLAT_MONTHLY = env('STRIPE_PRICE_FLAT_MONTHLY', 'price_1T1o0XFRJliLrxglferHrKSC');
 
 /** Managed keys: metered, per OpenRouter key created in portal */
 export const PRICE_ID_MANAGED_KEYS = env('STRIPE_PRICE_MANAGED_KEYS', 'price_1T0bTQFRJliLrxgl0Hu8D8GO');
@@ -96,16 +96,8 @@ export async function trackTelemetryEventsUsage(
 ): Promise<void> {
   const totalPrice = TELEMETRY_EVENTS_UNIT_PRICE * quantity;
   const idempotencyKey = `${customerId}-telemetry_events-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-
-  await db.insert(usageEvents).values({
-    customer_id: customerId,
-    event_type: 'telemetry_event',
-    idempotency_key: idempotencyKey,
-    quantity,
-    unit_price: TELEMETRY_EVENTS_UNIT_PRICE.toFixed(4),
-    total_price: totalPrice.toFixed(4),
-    metadata: metadata ? { ...metadata } : {},
-  });
+  void totalPrice;
+  void metadata;
 
   const customer = await db.query.customers.findFirst({
     where: eq(customers.id, customerId),
@@ -132,16 +124,7 @@ export async function trackManagedKeysUsage(
   stripeApiKey?: string
 ): Promise<void> {
   const idempotencyKey = `${customerId}-managed_keys-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-
-  await db.insert(usageEvents).values({
-    customer_id: customerId,
-    event_type: 'managed_key',
-    idempotency_key: idempotencyKey,
-    quantity,
-    unit_price: '0',
-    total_price: '0',
-    metadata: metadata ? { ...metadata } : {},
-  });
+  void metadata;
 
   const customer = await db.query.customers.findFirst({
     where: eq(customers.id, customerId),

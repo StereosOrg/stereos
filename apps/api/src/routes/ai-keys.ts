@@ -337,6 +337,17 @@ router.get('/ai/keys/:hash/details', requireAuth, async (c) => {
       return c.json({ error: 'Key not found' }, 404);
     }
 
+    const usageResult = await db.execute(sql`
+      SELECT
+        COUNT(*)::int AS total_requests,
+        COALESCE(SUM(total_tokens), 0)::int AS total_tokens,
+        COUNT(*) FILTER (WHERE status_code >= 400)::int AS total_errors,
+        MAX(created_at) AS last_activity
+      FROM "GatewayEvent"
+      WHERE key_id = ${key.id}
+    `);
+    const usageRow = Array.isArray(usageResult) ? usageResult[0] : (usageResult as { rows?: unknown[] })?.rows?.[0];
+
     return c.json({
       id: key.id,
       key_hash: key.key_hash,
@@ -351,6 +362,12 @@ router.get('/ai/keys/:hash/details', requireAuth, async (c) => {
       user: key.user,
       team: key.team,
       created_at: key.created_at,
+      usage: {
+        total_requests: Number((usageRow as Record<string, unknown>)?.total_requests ?? 0),
+        total_tokens: Number((usageRow as Record<string, unknown>)?.total_tokens ?? 0),
+        total_errors: Number((usageRow as Record<string, unknown>)?.total_errors ?? 0),
+        last_activity: (usageRow as Record<string, unknown>)?.last_activity ?? null,
+      },
     });
   } catch (error) {
     console.error('Error getting key details:', error);
@@ -408,9 +425,8 @@ const SUPPORTED_MODELS = [
   'gpt-5-mini',
   'gpt-4.1',
   // Anthropic
-  'claude-opus-4-6',
-  'claude-sonnet-4-5-20250929',
-  'claude-haiku-4-5-20251001',
+  'anthropic/claude-opus-4-6',
+  'anthropic/claude-sonnet-4-5',
 ];
 
 // GET /v1/ai/models - List available ZDR-compatible models

@@ -17,6 +17,12 @@ interface KeyDetailData {
   spend_reset_at: string | null;
   user: { id: string; name: string | null; email: string } | null;
   team: { id: string; name: string } | null;
+  usage: {
+    total_requests: number;
+    total_tokens: number;
+    total_errors: number;
+    last_activity: string | null;
+  };
 }
 
 export function KeyDetail() {
@@ -134,18 +140,18 @@ export function KeyDetail() {
 
       <div className="grid-3" style={{ marginBottom: '24px' }}>
         <StatCard
-          label="Total spend"
-          value={fmtUsd(parseFloat(String(k.spend_usd ?? '0')))}
-          icon={DollarSign}
-        />
-        <StatCard
-          label="Budget remaining"
-          value={k.budget_remaining != null ? fmtUsd(k.budget_remaining) : '—'}
+          label="Total requests"
+          value={k.usage.total_requests.toLocaleString()}
           icon={Zap}
         />
         <StatCard
-          label="Budget"
-          value={k.budget_usd != null ? fmtUsd(parseFloat(String(k.budget_usd))) : 'Unlimited'}
+          label="Total tokens"
+          value={k.usage.total_tokens.toLocaleString()}
+          icon={DollarSign}
+        />
+        <StatCard
+          label="Errors"
+          value={k.usage.total_errors.toLocaleString()}
           icon={Calendar}
         />
       </div>
@@ -161,6 +167,7 @@ export function KeyDetail() {
           <DetailRow label="Scope" value={scopeLabel} />
           <DetailRow label="Created" value={new Date(k.created_at).toLocaleString()} />
           <DetailRow label="Spend resets" value={k.spend_reset_at ? new Date(k.spend_reset_at).toLocaleString() : '—'} />
+          <DetailRow label="Last activity" value={k.usage.last_activity ? new Date(k.usage.last_activity).toLocaleString() : '—'} />
         </div>
       </div>
     </div>

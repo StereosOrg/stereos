@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { ToolIcon, toolDisplayName } from '../components/ToolIcon';
+import { ToolIcon, toolDisplayName, VendorIcon, getVendorBrand } from '../components/ToolIcon';
 import { Key, Plus } from 'lucide-react';
 
 interface UserProfile {
@@ -386,7 +386,15 @@ export function UserProfile() {
                         flexShrink: 0,
                       }}
                     >
-                      <ToolIcon actorId={event.actor_id} tool={event.tool} size={20} />
+                      {event.model && getVendorBrand(event.model) ? (
+                        <VendorIcon
+                          vendor={(getVendorBrand(event.model)?.key ?? event.model)}
+                          displayName={(getVendorBrand(event.model)?.label ?? event.model)}
+                          size={20}
+                        />
+                      ) : (
+                        <ToolIcon actorId={event.actor_id} tool={event.tool} size={20} />
+                      )}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: 600, margin: 0, fontSize: '15px' }}>

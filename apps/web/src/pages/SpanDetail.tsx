@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { VendorIcon } from '../components/ToolIcon';
+import { VendorIcon, getVendorBrand } from '../components/ToolIcon';
 
 interface Span {
   id: string;
@@ -73,6 +73,7 @@ export function SpanDetail() {
     (span.span_attributes as Record<string, string> | null)?.['gen_ai.request.model'] ??
     (span.span_attributes as Record<string, string> | null)?.['gen_ai.response.model'] ??
     null;
+  const brand = getVendorBrand(model ?? span.span_name ?? span.vendor) ?? { key: span.vendor, label: span.vendor };
 
   return (
     <div>
@@ -95,12 +96,12 @@ export function SpanDetail() {
               flexShrink: 0,
             }}
           >
-            <VendorIcon vendor={span.vendor} displayName={span.vendor} size={28} />
+            <VendorIcon vendor={brand.key} displayName={brand.label} size={28} />
           </div>
           <div>
             <h1 className="heading-2" style={{ margin: 0 }}>{span.span_name}</h1>
             <p style={{ color: '#555', margin: '4px 0 0', fontSize: '14px' }}>
-              {span.vendor}{model ? ` · ${model}` : ''}
+              {brand.label}{model ? ` · ${model}` : ''}
             </p>
           </div>
         </div>

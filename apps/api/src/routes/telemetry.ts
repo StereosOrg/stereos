@@ -164,6 +164,34 @@ router.get('/tool-profiles/:profileId/spans', sessionOrTokenAuth, async (c) => {
   return c.json({ spans, limit, offset });
 });
 
+// GET /v1/spans - List spans (observability)
+router.get('/spans', sessionOrTokenAuth, async (c) => {
+  const apiToken = c.get('apiToken') as ApiTokenPayload;
+  const db = c.get('db');
+  const customerId = apiToken.customer.id;
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
+
+  const spans = await db.query.telemetrySpans.findMany({
+    where: eq(telemetrySpans.customer_id, customerId),
+    orderBy: desc(telemetrySpans.start_time),
+    limit,
+    offset,
+    columns: {
+      id: true,
+      span_name: true,
+      vendor: true,
+      start_time: true,
+      status_code: true,
+      span_attributes: true,
+      user_id: true,
+      team_id: true,
+    },
+  });
+
+  return c.json({ spans, limit, offset });
+});
+
 // GET /v1/spans/:spanId - Get a single span detail
 router.get('/spans/:spanId', sessionOrTokenAuth, async (c) => {
   const apiToken = c.get('apiToken') as ApiTokenPayload;

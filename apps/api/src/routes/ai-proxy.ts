@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Database } from '@stereos/shared/db';
-import { aiGatewayKeys } from '@stereos/shared/schema';
+import { aiGatewayKeys, gatewayEvents } from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { checkBudget } from './ai-keys.js';
@@ -46,6 +46,7 @@ router.all('/ai/chat/completions', async (c) => {
           columns: {
             id: true,
             cf_gateway_id: true,
+            user_id: true,
           },
         },
         user: {
@@ -115,17 +116,18 @@ router.all('/ai/chat/completions', async (c) => {
     const cfUrl = `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${cfGatewayId}/${provider}/chat/completions`;
 
     const providerKey = c.req.header('X-Provider-Key');
-    if (!providerKey) {
-      return c.json({ error: 'X-Provider-Key header required (BYOK)', code: 'provider_key_required' }, 400);
+    // Unified billing: no provider key required. BYOK: pass X-Provider-Key.
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'cf-aig-authorization': `Bearer ${cfApiToken}`,
+    };
+    if (providerKey) {
+      headers.Authorization = `Bearer ${providerKey}`;
     }
 
     const cfResponse = await fetch(cfUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'cf-aig-authorization': `Bearer ${cfApiToken}`,
-        'Authorization': `Bearer ${providerKey}`,
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
@@ -133,15 +135,38 @@ router.all('/ai/chat/completions', async (c) => {
     const endTime = Date.now();
     const durationMs = endTime - startTime;
 
-    // 8. Extract token usage for telemetry
+    // 8. Extract token usage
     const promptTokens = responseBody.usage?.prompt_tokens || 0;
     const completionTokens = responseBody.usage?.completion_tokens || 0;
+    const totalTokens = responseBody.usage?.total_tokens || (promptTokens + completionTokens);
 
-    // 9. Emit telemetry span (non-blocking)
-    emitTelemetrySpan({
+    // 9. Record gateway usage event (best-effort)
+    const telemetryUserId = key.user_id ?? key.created_by_user_id ?? key.customer?.user_id ?? null;
+    await db.insert(gatewayEvents).values({
+      customer_id: key.customer_id,
+      key_id: key.id,
+      key_hash: key.key_hash,
+      user_id: telemetryUserId,
+      team_id: key.team_id,
+      model: requestedModel,
+      provider,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: totalTokens,
+      status_code: cfResponse.status,
+      duration_ms: durationMs,
+    }).catch((error: unknown) => {
+      console.warn('AI Proxy: failed to record gateway event', error);
+    });
+
+    // 10. Emit telemetry span (non-blocking)
+    if (!telemetryUserId) {
+      console.warn('AI Proxy: unable to emit telemetry (missing user_id and created_by_user_id on key)');
+    } else {
+      emitTelemetrySpan({
       db,
       customerId: key.customer_id,
-      userId: key.user_id,
+      userId: telemetryUserId,
       teamId: key.team_id,
       model: requestedModel,
       provider,
@@ -151,9 +176,10 @@ router.all('/ai/chat/completions', async (c) => {
       startTime,
       endTime,
       responseOk: cfResponse.ok,
-    }).catch(console.error);
+      }).catch(console.error);
+    }
 
-    // 10. Return response to client
+    // 11. Return response to client
     return c.json(responseBody, cfResponse.status as any);
 
   } catch (error) {

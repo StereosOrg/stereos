@@ -20,6 +20,7 @@ import { KeyDetail } from './pages/KeyDetail';
 import { KeyManagement } from './pages/KeyManagement';
 import { AIGateway } from './pages/AIGateway';
 import { DLP } from './pages/DLP';
+import { SpanLogs } from './pages/SpanLogs';
 
 import { SpanDetail } from './pages/SpanDetail';
 import { TeamProfile } from './pages/TeamProfile';
@@ -63,6 +64,7 @@ function App() {
         <Route path="billing" element={<Billing />} />
         <Route path="individual-profile" element={<IndividualProfile />} />
         <Route path="spans/:spanId" element={<SpanDetail />} />
+        <Route path="span-logs" element={<SpanLogs />} />
         <Route path="teams" element={<Teams />} />
         <Route path="teams/:teamId" element={<TeamProfile />} />
         <Route path="settings" element={<Settings />} />

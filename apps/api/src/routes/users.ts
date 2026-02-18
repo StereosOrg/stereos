@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { users, usageEvents, customers, telemetrySpans, teamMembers, teams } from '@stereos/shared/schema';
+import { users, gatewayEvents, customers, telemetrySpans, teamMembers, teams } from '@stereos/shared/schema';
 import { eq, desc, sql, and, isNull } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -153,32 +153,32 @@ router.get('/users/:userId/profile', requireAuth, async (c) => {
       },
     });
     
-    // Get usage events/billing history (last 30 days)
+    // Get gateway usage/billing history (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
 
-    const billingHistory = await db.query.usageEvents.findMany({
+    const billingHistory = await db.query.gatewayEvents.findMany({
       where: and(
-        eq(usageEvents.customer_id, customerId),
-        sql`${usageEvents.timestamp} >= ${thirtyDaysAgoStr}::timestamptz`
+        eq(gatewayEvents.customer_id, customerId),
+        sql`${gatewayEvents.created_at} >= ${thirtyDaysAgoStr}::timestamptz`
       ),
-      orderBy: desc(usageEvents.timestamp),
+      orderBy: desc(gatewayEvents.created_at),
       limit: 100,
     });
     
     // Calculate monthly usage stats
     const monthlyStats = await db.execute(sql`
       SELECT 
-        DATE_TRUNC('month', timestamp) as month,
+        DATE_TRUNC('month', created_at) as month,
         COUNT(*) as event_count,
-        SUM(CASE WHEN event_type = 'agent_action' THEN 1 ELSE 0 END) as agent_actions,
-        SUM(CASE WHEN event_type = 'outcome' THEN 1 ELSE 0 END) as outcomes,
-        SUM(quantity) as total_quantity,
-        SUM(total_price) as total_cost
-      FROM "UsageEvent"
+        0 as agent_actions,
+        0 as outcomes,
+        SUM(total_tokens) as total_quantity,
+        0 as total_cost
+      FROM "GatewayEvent"
       WHERE customer_id = ${customerId}
-      GROUP BY DATE_TRUNC('month', timestamp)
+      GROUP BY DATE_TRUNC('month', created_at)
       ORDER BY month DESC
       LIMIT 12
     `);

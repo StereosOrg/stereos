@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { VendorIcon } from '../components/ToolIcon';
+import { VendorIcon, getVendorBrand } from '../components/ToolIcon';
 import { Key, Plus, Trash2 } from 'lucide-react';
 
 interface TeamProfileResponse {
@@ -12,16 +12,16 @@ interface TeamProfileResponse {
     profile_pic: string | null;
   };
   stats: {
-    total_spans: number;
-    total_traces: number;
+    total_requests: number;
+    total_tokens: number;
     total_errors: number;
     active_members: number;
     error_rate: number;
-    traces_per_member: number;
+    requests_per_member: number;
     first_activity: string | null;
     last_activity: string | null;
   };
-  top_vendors: Array<{ vendor: string; span_count: number }>;
+  top_models: Array<{ model: string; request_count: number }>;
   recent_diffs: Array<{ id: string; vendor: string; start_time: string; diff: string }>;
   recent_spans: Array<{
     id: string;
@@ -213,33 +213,36 @@ export function TeamProfile() {
       </div>
 
       <div className="grid-3" style={{ marginBottom: '24px' }}>
-        <StatCard label="Total spans" value={stats.total_spans} />
-        <StatCard label="Total traces" value={stats.total_traces} />
+        <StatCard label="Total requests" value={stats.total_requests} />
+        <StatCard label="Total tokens" value={stats.total_tokens} />
         <StatCard label="Active members (30d)" value={stats.active_members} />
       </div>
 
       <div className="grid-3" style={{ marginBottom: '24px' }}>
         <StatCard label="Errors" value={stats.total_errors} />
         <StatCard label="Error rate" value={`${Math.round(stats.error_rate * 100)}%`} />
-        <StatCard label="Traces/member (30d)" value={stats.traces_per_member.toFixed(1)} />
+        <StatCard label="Requests/member (30d)" value={stats.requests_per_member.toFixed(1)} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px', marginBottom: '24px' }}>
         <div className="card">
-          <h2 className="heading-3" style={{ marginBottom: '16px' }}>Top vendors (30d)</h2>
-          {data.top_vendors.length === 0 ? (
-            <p style={{ color: '#555' }}>No vendor data.</p>
+          <h2 className="heading-3" style={{ marginBottom: '16px' }}>Top models (30d)</h2>
+          {data.top_models.length === 0 ? (
+            <p style={{ color: '#555' }}>No model data.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {data.top_vendors.map((v) => (
-                <div key={v.vendor} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <VendorIcon vendor={v.vendor} displayName={v.vendor} size={28} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{v.vendor}</div>
-                    <div style={{ fontSize: '12px', color: '#666' }}>{v.span_count} spans</div>
+              {data.top_models.map((m) => {
+                const brand = getVendorBrand(m.model) ?? { key: m.model, label: m.model };
+                return (
+                  <div key={m.model} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <VendorIcon vendor={brand.key} displayName={brand.label} size={28} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600 }}>{m.model}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>{m.request_count} requests</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -272,16 +275,20 @@ export function TeamProfile() {
           <p style={{ color: '#555' }}>No spans yet.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {recent_spans.map((s) => (
-              <Link key={s.id} to={`/spans/${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', textDecoration: 'none', color: 'inherit' }}>
-                <VendorIcon vendor={s.vendor} displayName={s.vendor} size={28} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600 }}>{s.intent}</div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>{s.vendor}{s.model ? ` · ${s.model}` : ''}</div>
-                </div>
-                <div style={{ fontSize: '12px', color: '#666' }}>{new Date(s.timestamp).toLocaleString()}</div>
-              </Link>
-            ))}
+            {recent_spans.map((s) => {
+              const brand = getVendorBrand(s.model ?? s.intent ?? s.vendor) ?? { key: s.vendor, label: s.vendor };
+              const vendorLabel = brand.label;
+              return (
+                <Link key={s.id} to={`/spans/${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', textDecoration: 'none', color: 'inherit' }}>
+                  <VendorIcon vendor={brand.key} displayName={vendorLabel} size={28} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600 }}>{s.intent}</div>
+                    <div style={{ fontSize: '12px', color: '#666' }}>{vendorLabel}{s.model ? ` · ${s.model}` : ''}</div>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>{new Date(s.timestamp).toLocaleString()}</div>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

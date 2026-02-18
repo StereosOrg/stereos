@@ -134,21 +134,6 @@ export const apiTokens = pgTable('ApiToken', {
   userIdx: index('ApiToken_user_id_idx').on(t.user_id),
 }));
 
-export const usageEvents = pgTable('UsageEvent', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
-  event_type: text('event_type').notNull(),
-  idempotency_key: text('idempotency_key').notNull(),
-  quantity: integer('quantity').default(1).notNull(),
-  unit_price: decimal('unit_price', { precision: 10, scale: 4 }).default('0').notNull(),
-  total_price: decimal('total_price', { precision: 10, scale: 4 }).default('0').notNull(),
-  metadata: jsonb('metadata'),
-  timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  customerIdx: index('UsageEvent_customer_id_idx').on(t.customer_id),
-  timeIdx: index('UsageEvent_created_at_idx').on(t.timestamp),
-  idempotencyIdx: uniqueIndex('UsageEvent_idempotency_idx').on(t.customer_id, t.idempotency_key),
-}));
 
 // ── Partners & Referrals ────────────────────────────────────────────────
 
@@ -319,6 +304,29 @@ export const aiGatewayKeys = pgTable('AiGatewayKey', {
   teamIdx: index('AiGatewayKey_team_id_idx').on(t.team_id),
 }));
 
+export const gatewayEvents = pgTable('GatewayEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+  key_id: text('key_id').notNull().references(() => aiGatewayKeys.id, { onDelete: 'cascade' }),
+  key_hash: text('key_hash').notNull(),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  team_id: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
+  model: text('model').notNull(),
+  provider: text('provider').notNull(),
+  prompt_tokens: integer('prompt_tokens').default(0).notNull(),
+  completion_tokens: integer('completion_tokens').default(0).notNull(),
+  total_tokens: integer('total_tokens').default(0).notNull(),
+  status_code: integer('status_code').notNull(),
+  duration_ms: integer('duration_ms').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  customerIdx: index('GatewayEvent_customer_id_idx').on(t.customer_id),
+  keyIdx: index('GatewayEvent_key_id_idx').on(t.key_id),
+  userIdx: index('GatewayEvent_user_id_idx').on(t.user_id),
+  teamIdx: index('GatewayEvent_team_id_idx').on(t.team_id),
+  timeIdx: index('GatewayEvent_created_at_idx').on(t.created_at),
+}));
+
 export const telemetryMetrics = pgTable('TelemetryMetric', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   customer_id: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
@@ -382,7 +390,7 @@ export const apiTokensRelations = relations(apiTokens, ({ one }) => ({
 export const customersRelations = relations(customers, ({ one, many }) => ({
   user: one(users, { fields: [customers.user_id], references: [users.id] }),
   apiTokens: many(apiTokens),
-  usageEvents: many(usageEvents),
+  gatewayEvents: many(gatewayEvents),
   invites: many(invites),
   toolProfiles: many(toolProfiles),
   telemetrySpans: many(telemetrySpans),
