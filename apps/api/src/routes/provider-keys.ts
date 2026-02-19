@@ -1,10 +1,8 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
 import { db } from '@stereos/shared/db';
 import * as schema from '@stereos/shared/schema';
 import { eq } from 'drizzle-orm';
-import { requireAuth, getCurrentUser } from '../lib/middleware.js';
+import { requireAuth } from '../lib/middleware.js';
 import type { AppVariables } from '../types/app.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
@@ -19,16 +17,7 @@ const requireAdmin = async (c: any, next: any) => {
 };
 
 // Cast middleware to avoid type issues
-const authMiddleware = requireAuth as (c: unknown, next: () => Promise<void>) => Promise<void>;
-
-// Provider key schema - each provider can have a key and enabled flag
-const providerConfigSchema = z.object({
-  key: z.string(),
-  enabled: z.boolean().default(true),
-  endpoint: z.string().optional(),
-});
-
-const providerKeySchema = z.record(providerConfigSchema);
+const authMiddleware = requireAuth as any;
 
 // Simple XOR encryption for provider keys (basic obfuscation)
 function encryptKey(key: string): string {
@@ -66,7 +55,7 @@ async function getCustomerForUser(dbInstance: any, userId: string) {
 }
 
 // GET /v1/provider-keys - Get provider keys (admin only, returns masked keys)
-router.get('/provider-keys', requireAuth, requireAdmin, async (c) => {
+router.get('/provider-keys', authMiddleware, requireAdmin, async (c) => {
   const dbInstance = c.get('db');
   const user = c.get('user');
   if (!user?.id) {
@@ -109,7 +98,7 @@ router.get('/provider-keys', requireAuth, requireAdmin, async (c) => {
 });
 
 // POST /v1/provider-keys - Update provider keys (admin only)
-router.post('/provider-keys', requireAuth, requireAdmin, zValidator('json', providerKeySchema), async (c) => {
+router.post('/provider-keys', authMiddleware, requireAdmin, async (c) => {
   const dbInstance = c.get('db');
   const user = c.get('user');
   if (!user?.id) {
@@ -121,38 +110,39 @@ router.post('/provider-keys', requireAuth, requireAdmin, zValidator('json', prov
     return c.json({ error: 'Customer not found' }, 404);
   }
 
-  const data = c.req.valid('json');
+  const data = await c.req.json();
 
   try {
     // Get existing keys to merge
     const existingKeys = (customer.provider_keys || {}) as Record<string, any>;
 
     // Encrypt new keys and merge with existing
-    const encryptedKeys = Object.entries(data).reduce((acc, [provider, config]) => {
+    const encryptedKeys = Object.entries(data as Record<string, any>).reduce((acc, [provider, config]) => {
       if (!config) return acc;
       
       const existing = existingKeys[provider];
+      const configObj = config as { key?: string; enabled?: boolean; endpoint?: string };
       
-      if (config.key && !config.key.startsWith('••••')) {
+      if (configObj.key && !configObj.key.startsWith('••••')) {
         // New key provided, encrypt it
         acc[provider] = {
-          key: encryptKey(config.key),
-          enabled: config.enabled,
-          ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+          key: encryptKey(configObj.key),
+          enabled: configObj.enabled ?? true,
+          ...(configObj.endpoint ? { endpoint: configObj.endpoint } : {}),
         };
       } else if (existing?.key) {
         // Keep existing key, update enabled status and endpoint
         acc[provider] = {
           key: existing.key,
-          enabled: config.enabled,
-          ...(config.endpoint !== undefined ? { endpoint: config.endpoint } : 
+          enabled: configObj.enabled ?? existing.enabled ?? true,
+          ...(configObj.endpoint !== undefined ? { endpoint: configObj.endpoint } : 
             existing.endpoint ? { endpoint: existing.endpoint } : {}),
         };
       } else {
         // No key, just store enabled status
         acc[provider] = {
-          enabled: config.enabled,
-          ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+          enabled: configObj.enabled ?? true,
+          ...(configObj.endpoint ? { endpoint: configObj.endpoint } : {}),
         };
       }
       return acc;
@@ -164,6 +154,34 @@ router.post('/provider-keys', requireAuth, requireAdmin, zValidator('json', prov
       .set({ provider_keys: encryptedKeys })
       .where(eq(schema.customers.id, customer.id));
 
+    // Sync to Cloudflare AI Gateway
+    const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+    const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
+
+    if (cfAccountId && cfApiToken && customer.cf_gateway_id) {
+      try {
+        const { createOrUpdateCfProviderConfig } = await import('../lib/cloudflare-ai.js');
+
+        // Create/update each provider config
+        for (const [provider, config] of Object.entries(encryptedKeys)) {
+          const configObj = config as { key?: string; enabled?: boolean; endpoint?: string };
+          if (configObj.enabled && configObj.key) {
+            await createOrUpdateCfProviderConfig(
+              cfAccountId,
+              cfApiToken,
+              customer.cf_gateway_id,
+              provider,
+              decryptKey(configObj.key),
+              configObj.endpoint
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync provider keys to Cloudflare:', err);
+        // Don't fail the request, but log the error
+      }
+    }
+
     return c.json({ success: true, message: 'Provider keys updated' });
   } catch (error) {
     console.error('Error updating provider keys:', error);
@@ -172,7 +190,7 @@ router.post('/provider-keys', requireAuth, requireAdmin, zValidator('json', prov
 });
 
 // DELETE /v1/provider-keys/:provider - Remove a provider key (admin only)
-router.delete('/provider-keys/:provider', requireAuth, requireAdmin, async (c) => {
+router.delete('/provider-keys/:provider', authMiddleware, requireAdmin, async (c) => {
   const dbInstance = c.get('db');
   const user = c.get('user');
   if (!user?.id) {
@@ -185,6 +203,10 @@ router.delete('/provider-keys/:provider', requireAuth, requireAdmin, async (c) =
     return c.json({ error: 'Customer not found' }, 404);
   }
 
+  if (!provider) {
+    return c.json({ error: 'Provider parameter required' }, 400);
+  }
+
   try {
     const providerKeys = { ...(customer.provider_keys || {}) };
     delete providerKeys[provider];
@@ -194,6 +216,20 @@ router.delete('/provider-keys/:provider', requireAuth, requireAdmin, async (c) =
       .set({ provider_keys: providerKeys })
       .where(eq(schema.customers.id, customer.id));
 
+    // Delete from Cloudflare AI Gateway
+    const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+    const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
+
+    if (cfAccountId && cfApiToken && customer.cf_gateway_id) {
+      try {
+        const { deleteCfProviderConfig } = await import('../lib/cloudflare-ai.js');
+        await deleteCfProviderConfig(cfAccountId, cfApiToken, customer.cf_gateway_id, provider);
+      } catch (err) {
+        console.error('Failed to delete provider config from Cloudflare:', err);
+        // Don't fail the request, but log the error
+      }
+    }
+
     return c.json({ success: true });
   } catch (error) {
     console.error('Error deleting provider key:', error);
@@ -202,7 +238,7 @@ router.delete('/provider-keys/:provider', requireAuth, requireAdmin, async (c) =
 });
 
 // GET /v1/provider-keys/models - Get available models based on configured providers
-router.get('/provider-keys/models', requireAuth, async (c) => {
+router.get('/provider-keys/models', authMiddleware, async (c) => {
   const dbInstance = c.get('db');
   const user = c.get('user');
   if (!user?.id) {
@@ -227,6 +263,7 @@ router.get('/provider-keys/models', requireAuth, async (c) => {
       google: ['gemini-1.5-pro', 'gemini-1.5-flash'],
       azure: ['gpt-4', 'gpt-4o', 'gpt-35-turbo'],
       groq: ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma-7b-it'],
+      cerebras: ['llama3.1-8b', 'llama3.1-70b'],
       mistral: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
       cohere: ['command-r', 'command-r-plus'],
     };

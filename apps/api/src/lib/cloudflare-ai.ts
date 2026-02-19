@@ -195,35 +195,79 @@ export type CfProviderKeys = {
   // Add more providers as needed
 };
 
+// Create or update provider config for a gateway
+// Docs: https://developers.cloudflare.com/api/resources/ai_gateway/subresources/provider_configs/methods/create/
+export async function createOrUpdateCfProviderConfig(
+  accountId: string,
+  apiToken: string,
+  gatewayId: string,
+  provider: string,
+  token: string,
+  resourceName?: string
+): Promise<void> {
+  const body: Record<string, string> = { provider, token };
+  if (resourceName) {
+    body.resource_name = resourceName;
+  }
+
+  const res = await fetch(
+    `${CF_API_BASE}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/provider-configs`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiToken}`,
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`CF AI Gateway provider config create failed: ${res.status} ${text}`);
+  }
+}
+
+// Delete provider config from a gateway
+export async function deleteCfProviderConfig(
+  accountId: string,
+  apiToken: string,
+  gatewayId: string,
+  provider: string
+): Promise<void> {
+  const res = await fetch(
+    `${CF_API_BASE}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/provider-configs/${provider}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+      },
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`CF AI Gateway provider config delete failed: ${res.status} ${text}`);
+  }
+}
+
+// Update all provider configs for a gateway (sync with our database)
 export async function updateCfProviderKeys(
   accountId: string,
   apiToken: string,
   gatewayId: string,
   providerKeys: CfProviderKeys
 ): Promise<void> {
-  const res = await fetch(
-    `${CF_API_BASE}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}`,
-    {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiToken}`,
-      },
-      body: JSON.stringify({
-        collect_logs: false,
-        rate_limiting_limit: 0,
-        rate_limiting_interval: 0,
-        rate_limiting_technique: 'fixed',
-        cache_ttl: 0,
-        cache_invalidate_on_update: true,
-        authentication: true,
-        zdr: true,
-        providers: providerKeys,
-      }),
+  // For each provider, create/update the config
+  for (const [provider, config] of Object.entries(providerKeys)) {
+    if (config.token) {
+      await createOrUpdateCfProviderConfig(
+        accountId,
+        apiToken,
+        gatewayId,
+        provider,
+        config.token,
+        // Only azure has resource_name
+        provider === 'azure' && 'resource_name' in config ? config.resource_name : undefined
+      );
     }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`CF AI Gateway provider keys update failed: ${res.status} ${text}`);
   }
 }
