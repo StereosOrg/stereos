@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
-import { posthog } from './lib/posthog';
+import { analytics } from './lib/customerio';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Dashboard } from './pages/Dashboard';
@@ -32,7 +32,7 @@ import { Teams } from './pages/Teams';
 function PageviewTracker() {
   const location = useLocation();
   useEffect(() => {
-    posthog.capture('$pageview');
+    analytics.page();
   }, [location.pathname]);
   return null;
 }

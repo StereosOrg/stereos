@@ -4,12 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { consumeSessionTokenFromUrl } from './lib/api';
 import App from './App';
-import { PostHogProvider } from './lib/posthog';
+import { initCustomerIO } from './lib/customerio';
 import './index.css';
 import './styles/neobrutalist.css';
 
 // After email verification we redirect with ?session_token=...; store it and strip from URL
 consumeSessionTokenFromUrl();
+initCustomerIO();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,12 +23,10 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <PostHogProvider>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </QueryClientProvider>
-    </PostHogProvider>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </QueryClientProvider>
   </StrictMode>
 );

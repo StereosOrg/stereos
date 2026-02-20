@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, BarChart3, Key, Zap } from 'lucide-react';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { SplitAuthLayout } from '../components/SplitAuthLayout';
-import { posthog } from '../lib/posthog';
+import { analytics } from '../lib/customerio';
 
 const titles = [
   { value: 'engineer', label: 'Engineer' },
@@ -40,7 +40,7 @@ export function Onboarding() {
   const firedRef = useRef(false);
   useEffect(() => {
     if (!firedRef.current) {
-      posthog.capture('Onboarding Started');
+      analytics.track('Onboarding Started');
       firedRef.current = true;
     }
   }, []);
@@ -107,7 +107,7 @@ export function Onboarding() {
       }
 
       await response.json();
-      posthog.capture('Onboarding Completed', { isMember });
+      analytics.track('Onboarding Completed', { isMember });
       // Invited members skip payment setup — go to dashboard or pending page
       if (isMember) {
         navigate('/', { replace: true });

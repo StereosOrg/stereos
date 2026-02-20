@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { Key, Trash2, User, Plus, AlertCircle, CheckCircle } from 'lucide-react';
+import { Key, Trash2, User, Plus, AlertCircle, CheckCircle, Pencil, X } from 'lucide-react';
 import { AIGateway } from './AIGateway';
 import { Billing } from './Billing';
 import { SpanLogs } from './SpanLogs';
@@ -44,10 +44,16 @@ interface AiGatewayKey {
   created_at: string;
 }
 
+type OtelEntry = {
+  url: string;
+  authorization?: string;
+  headers?: Record<string, string>;
+};
+
 interface GatewayInfo {
   cf_gateway_id: string | null;
   cf_account_id: string | null;
-  otel?: Array<{ url: string; authorization?: string; headers?: Record<string, string> }> | null;
+  otel?: OtelEntry[] | null;
 }
 
 const DEFAULT_OTEL_URL = `${API_BASE}/v1/traces`;
@@ -70,9 +76,16 @@ export function Settings() {
   const [gatewayInfo, setGatewayInfo] = useState<GatewayInfo | null>(null);
   const [gatewayInfoLoading, setGatewayInfoLoading] = useState(true);
   const [gatewayInfoError, setGatewayInfoError] = useState('');
-  const [otelUrls, setOtelUrls] = useState<string[]>([DEFAULT_OTEL_URL]);
+  const [otelEntries, setOtelEntries] = useState<OtelEntry[]>([{ url: DEFAULT_OTEL_URL }]);
   const [otelSaving, setOtelSaving] = useState(false);
   const [otelMessage, setOtelMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
+  const [otelDeleting, setOtelDeleting] = useState(false);
+  const [destModalOpen, setDestModalOpen] = useState(false);
+  const [destModalEditIdx, setDestModalEditIdx] = useState<number | null>(null);
+  const [modalUrl, setModalUrl] = useState('');
+  const [modalAuth, setModalAuth] = useState('');
+  const [modalHeaders, setModalHeaders] = useState<Array<{ key: string; value: string }>>([]);
 
   const loadAiGatewayKeys = async () => {
     setAiGatewayKeysLoading(true);
@@ -145,8 +158,7 @@ export function Settings() {
       .then((data) => {
         setGatewayInfo(data);
         if (Array.isArray(data?.otel) && data.otel.length > 0) {
-          const urls = data.otel.map((entry: { url: string }) => entry.url).filter(Boolean);
-          setOtelUrls(urls.length > 0 ? urls : [DEFAULT_OTEL_URL]);
+          setOtelEntries(data.otel.filter((e: OtelEntry) => e.url));
         }
         setGatewayInfoLoading(false);
       })
@@ -196,29 +208,88 @@ export function Settings() {
     return `${token.slice(0, 4)}…${token.slice(-4)}`;
   };
 
-  const saveOtelDestinations = async () => {
-    const urls = otelUrls.map((u) => u.trim()).filter(Boolean);
-    if (urls.length === 0) {
-      setOtelMessage({ type: 'error', text: 'Add at least one OTEL URL.' });
+  const patchOtelEntries = async (entries: OtelEntry[]) => {
+    const res = await fetch(`${API_BASE}/v1/ai/gateway/otel`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otel: entries }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update destinations');
+    return data;
+  };
+
+  const openDestModal = (editIdx: number | null) => {
+    if (editIdx !== null) {
+      const entry = otelEntries[editIdx];
+      setModalUrl(entry.url);
+      setModalAuth(entry.authorization ?? '');
+      setModalHeaders(
+        entry.headers ? Object.entries(entry.headers).map(([key, value]) => ({ key, value })) : []
+      );
+    } else {
+      setModalUrl('');
+      setModalAuth('');
+      setModalHeaders([]);
+    }
+    setDestModalEditIdx(editIdx);
+    setDestModalOpen(true);
+  };
+
+  const closeDestModal = () => {
+    setDestModalOpen(false);
+    setDestModalEditIdx(null);
+  };
+
+  const saveDestModal = async () => {
+    const url = modalUrl.trim();
+    if (!url) {
+      setOtelMessage({ type: 'error', text: 'URL is required.' });
       return;
     }
+    const entry: OtelEntry = { url };
+    if (modalAuth.trim()) entry.authorization = modalAuth.trim();
+    const headersObj = modalHeaders.reduce<Record<string, string>>((acc, { key, value }) => {
+      if (key.trim()) acc[key.trim()] = value;
+      return acc;
+    }, {});
+    if (Object.keys(headersObj).length > 0) entry.headers = headersObj;
+
+    const newEntries =
+      destModalEditIdx !== null
+        ? otelEntries.map((e, i) => (i === destModalEditIdx ? entry : e))
+        : [...otelEntries, entry];
+
     setOtelSaving(true);
     setOtelMessage(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/ai/gateway/otel`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ otel_urls: urls }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update OTEL destinations');
-      setOtelMessage({ type: 'success', text: 'OTEL destinations updated.' });
+      await patchOtelEntries(newEntries);
+      setOtelEntries(newEntries);
+      setOtelMessage({ type: 'success', text: destModalEditIdx !== null ? 'Destination updated.' : 'Destination added.' });
       setTimeout(() => setOtelMessage(null), 3000);
+      closeDestModal();
     } catch (e) {
-      setOtelMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to update OTEL destinations' });
+      setOtelMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to save destination' });
     } finally {
       setOtelSaving(false);
+    }
+  };
+
+  const deleteOtelEntry = async (idx: number) => {
+    const newEntries = otelEntries.filter((_, i) => i !== idx);
+    setOtelDeleting(true);
+    setOtelMessage(null);
+    try {
+      await patchOtelEntries(newEntries);
+      setOtelEntries(newEntries);
+      setOtelMessage({ type: 'success', text: 'Destination removed.' });
+      setTimeout(() => setOtelMessage(null), 3000);
+    } catch (e) {
+      setOtelMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to delete destination' });
+    } finally {
+      setOtelDeleting(false);
+      setDeleteConfirmIdx(null);
     }
   };
 
@@ -247,6 +318,7 @@ export function Settings() {
   };
 
   return (
+    <>
     <div>
       <h1 className="heading-1" style={{ marginBottom: '8px' }}>
         Settings
@@ -544,52 +616,54 @@ export function Settings() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {otelUrls.map((url, idx) => (
-                            <div key={`otel-${idx}`} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                              <input
-                                className="input"
-                                type="url"
-                                value={url}
-                                onChange={(e) => {
-                                  const next = [...otelUrls];
-                                  next[idx] = e.target.value;
-                                  setOtelUrls(next);
-                                }}
-                                placeholder="https://otel.example.com/v1/traces"
-                                style={{ flex: 1, fontFamily: 'monospace' }}
-                              />
-                              <button
-                                type="button"
-                                className="btn"
-                                onClick={() => setOtelUrls((prev) => prev.filter((_, i) => i !== idx))}
-                                disabled={otelUrls.length === 1}
-                                title="Remove URL"
-                              >
-                                <Trash2 size={16} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                          {otelEntries.map((entry, idx) => (
+                            <div key={`otel-${idx}`} style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px 14px', background: 'var(--bg-cream)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '13px', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {entry.url}
+                                </div>
+                                {(entry.authorization || (entry.headers && Object.keys(entry.headers).length > 0)) && (
+                                  <div style={{ display: 'flex', gap: '10px', marginTop: '4px', fontSize: '12px', color: '#666' }}>
+                                    {entry.authorization && <span>Auth set</span>}
+                                    {entry.headers && Object.keys(entry.headers).length > 0 && (
+                                      <span>{Object.keys(entry.headers).length} header{Object.keys(entry.headers).length !== 1 ? 's' : ''}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <button type="button" className="btn" onClick={() => openDestModal(idx)} title="Edit">
+                                <Pencil size={14} />
                               </button>
+                              {deleteConfirmIdx === idx ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '12px', color: '#dc2626', whiteSpace: 'nowrap' }}>Delete?</span>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    style={{ color: '#dc2626', borderColor: '#dc2626' }}
+                                    onClick={() => deleteOtelEntry(idx)}
+                                    disabled={otelDeleting}
+                                  >
+                                    {otelDeleting ? '…' : 'Yes'}
+                                  </button>
+                                  <button type="button" className="btn" onClick={() => setDeleteConfirmIdx(null)} disabled={otelDeleting}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button type="button" className="btn" onClick={() => setDeleteConfirmIdx(idx)} title="Delete">
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
 
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => setOtelUrls((prev) => [...prev, ''])}
-                          >
-                            <Plus size={16} />
-                            Add destination
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={saveOtelDestinations}
-                            disabled={otelSaving}
-                          >
-                            {otelSaving ? 'Saving…' : 'Save destinations'}
-                          </button>
-                        </div>
+                        <button type="button" className="btn" onClick={() => openDestModal(null)}>
+                          <Plus size={16} />
+                          Add destination
+                        </button>
 
                         {otelMessage && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px', fontSize: '13px', color: otelMessage.type === 'success' ? '#16a34a' : '#dc2626' }}>
@@ -607,5 +681,112 @@ export function Settings() {
         </TabsContent>}
       </Tabs>
     </div>
+
+    {destModalOpen && (
+
+      <div
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px' }}
+        onClick={closeDestModal}
+      >
+        <div className="card" style={{ maxWidth: '520px', width: '100%', maxHeight: '90vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+            <h2 className="heading-3" style={{ margin: 0 }}>
+              {destModalEditIdx !== null ? 'Edit destination' : 'Add destination'}
+            </h2>
+            <button type="button" onClick={closeDestModal} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#666' }}>
+              <X size={20} />
+            </button>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>URL <span style={{ color: '#dc2626' }}>*</span></label>
+            <input
+              className="input"
+              type="url"
+              value={modalUrl}
+              onChange={(e) => setModalUrl(e.target.value)}
+              placeholder="https://otel.example.com/v1/traces"
+              style={{ width: '100%', fontFamily: 'monospace' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
+              Authorization <span style={{ fontWeight: 400, color: '#666' }}>— optional</span>
+            </label>
+            <input
+              className="input"
+              type="text"
+              value={modalAuth}
+              onChange={(e) => setModalAuth(e.target.value)}
+              placeholder="Bearer token or API key"
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px' }}>
+              Headers <span style={{ fontWeight: 400, color: '#666' }}>— optional</span>
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {modalHeaders.map((header, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    className="input"
+                    type="text"
+                    value={header.key}
+                    onChange={(e) => {
+                      const next = [...modalHeaders];
+                      next[i] = { ...next[i], key: e.target.value };
+                      setModalHeaders(next);
+                    }}
+                    placeholder="Header name"
+                    style={{ flex: '0 0 40%' }}
+                  />
+                  <input
+                    className="input"
+                    type="text"
+                    value={header.value}
+                    onChange={(e) => {
+                      const next = [...modalHeaders];
+                      next[i] = { ...next[i], value: e.target.value };
+                      setModalHeaders(next);
+                    }}
+                    placeholder="Value"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setModalHeaders((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn"
+              style={{ marginTop: '8px' }}
+              onClick={() => setModalHeaders((prev) => [...prev, { key: '', value: '' }])}
+            >
+              <Plus size={14} />
+              Add header
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn" onClick={closeDestModal} disabled={otelSaving}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={saveDestModal} disabled={otelSaving}>
+              {otelSaving ? 'Saving…' : destModalEditIdx !== null ? 'Save changes' : 'Add destination'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

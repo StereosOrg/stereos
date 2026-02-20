@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { posthog } from '../lib/posthog';
+import { analytics } from '../lib/customerio';
 import { Key, UserPlus, UsersRound, X, Trash2 } from 'lucide-react';
 
 const OPENAI_LOGO = 'https://images.seeklogo.com/logo-png/42/2/open-ai-logo-png_seeklogo-428036.png';
@@ -219,7 +219,7 @@ export function KeyManagement() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Failed to create key');
       const selectedUser = users.find((u) => u.id === selectedUserId);
-      posthog.capture('Key Created', {
+      analytics.track('Key Created', {
         type: 'user',
         key_name: keyName.trim(),
         user_id: selectedUserId,
@@ -277,7 +277,7 @@ export function KeyManagement() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Failed to create key');
       const selectedTeam = teams.find((t) => t.id === selectedTeamId);
-      posthog.capture('Key Created', {
+      analytics.track('Key Created', {
         type: 'team',
         key_name: keyName.trim(),
         team_id: selectedTeamId,

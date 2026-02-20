@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_BASE, getAuthHeaders } from '../lib/api';
-import { posthog } from '../lib/posthog';
+import { analytics } from '../lib/customerio';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 
@@ -64,7 +64,7 @@ export function Teams() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create team');
       const manager = usersData?.users.find((u) => u.id === managerId);
-      posthog.capture('Team Created', {
+      analytics.track('Team Created', {
         team_name: name,
         manager_user_id: managerId || null,
         manager_name: manager?.name || manager?.email || null,

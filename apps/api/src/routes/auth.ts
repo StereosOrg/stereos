@@ -7,8 +7,8 @@ import { sessionOrTokenAuth } from '../lib/api-token.js';
 import { getCustomerForUser } from '../lib/middleware.js';
 import type { ApiTokenPayload } from '../lib/api-token.js';
 import type { AppVariables } from '../types/app.js';
-import { getPostHog } from '../lib/posthog.js';
 import { createCfGateway } from '../lib/cloudflare-ai.js';
+import { notifyNewSignup } from '../lib/slack.js';
 
 const router = new Hono<{ Variables: AppVariables }>();
 
@@ -51,11 +51,7 @@ router.post('/auth/magic-link/exchange', async (c) => {
     });
     user = (await db.query.users.findFirst({ where: eq(users.id, userId) }))!;
 
-    // Track new user signup
-    const ph = getPostHog();
-    if (ph) {
-      ph.capture({ distinctId: userId, event: 'New User', properties: { email: email.toLowerCase() } });
-    }
+    notifyNewSignup(email.toLowerCase());
   }
 
   // Use a distinct prefix so our tokens are distinguishable from better-auth’s (e.g. nanoid-style); both are valid.

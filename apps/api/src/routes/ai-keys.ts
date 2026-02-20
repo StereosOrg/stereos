@@ -563,7 +563,7 @@ router.patch('/ai/gateway/otel', requireAuth, requireAdminOrManager, async (c) =
     if (single) otelEntries = [{ url: single }];
   }
 
-  if (!otelEntries || otelEntries.length === 0) {
+  if (otelEntries === null) {
     return c.json({ error: 'otel_url or otel_urls is required' }, 400);
   }
 
