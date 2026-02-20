@@ -10,7 +10,6 @@ import {
   LogOut,
   Cloud,
   Shield,
-  Activity,
   Lock,
 } from 'lucide-react';
 import { API_BASE, BEARER_TOKEN_KEY, getAuthHeaders } from '../lib/api';
