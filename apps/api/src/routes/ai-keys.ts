@@ -444,11 +444,24 @@ router.get('/ai/gateway', requireAuth, requireAdminOrManager, async (c) => {
   }
 
   const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
+  const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
   const baseUrl = (c.env as any)?.BASE_URL || process.env.BASE_URL || 'https://api.trystereos.com';
+
+  let otel: Array<{ authorization?: string; headers?: Record<string, string>; url: string }> | null = null;
+  if (customer.cf_gateway_id && cfAccountId && cfApiToken) {
+    try {
+      const { getCfGateway } = await import('../lib/cloudflare-ai.js');
+      const gw = await getCfGateway(cfAccountId, cfApiToken, customer.cf_gateway_id);
+      otel = gw.otel ?? null;
+    } catch (err) {
+      console.error('Failed to fetch CF gateway details:', err);
+    }
+  }
 
   return c.json({
     cf_gateway_id: customer.cf_gateway_id,
     cf_account_id: cfAccountId || null,
+    otel,
     proxy_url: customer.cf_gateway_id
       ? `${baseUrl}/v1/chat/completions`
       : null,
@@ -529,17 +542,36 @@ router.patch('/ai/gateway/otel', requireAuth, requireAdminOrManager, async (c) =
   }
 
   const body = await c.req.json();
-  const otelUrl = body.otel_url?.trim();
+  let otelEntries: Array<{ url: string; authorization?: string; headers?: Record<string, string> }> | null = null;
 
-  if (!otelUrl) {
-    return c.json({ error: 'otel_url is required' }, 400);
+  if (Array.isArray(body.otel)) {
+    otelEntries = body.otel
+      .filter((entry: any) => entry && typeof entry.url === 'string')
+      .map((entry: any) => ({
+        url: String(entry.url).trim(),
+        authorization: entry.authorization,
+        headers: entry.headers,
+      }))
+      .filter((entry: any) => entry.url);
+  } else if (Array.isArray(body.otel_urls)) {
+    otelEntries = body.otel_urls
+      .filter((url: any) => typeof url === 'string')
+      .map((url: any) => ({ url: String(url).trim() }))
+      .filter((entry: any) => entry.url);
+  } else if (typeof body.otel_url === 'string') {
+    const single = body.otel_url.trim();
+    if (single) otelEntries = [{ url: single }];
+  }
+
+  if (!otelEntries || otelEntries.length === 0) {
+    return c.json({ error: 'otel_url or otel_urls is required' }, 400);
   }
 
   try {
     await updateCfGateway(cfAccountId, cfApiToken, customer.cf_gateway_id, {
-      otel: [{ url: otelUrl }],
+      otel: otelEntries,
     });
-    return c.json({ success: true, otel_url: otelUrl });
+    return c.json({ success: true, otel: otelEntries });
   } catch (error) {
     console.error('Gateway OTEL update failed:', error);
     return c.json({ error: 'Failed to update OTEL endpoint' }, 500);

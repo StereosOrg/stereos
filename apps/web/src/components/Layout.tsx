@@ -40,7 +40,6 @@ export function Layout() {
     ...(isAdmin ? [{ path: '/provider-keys', label: 'Provider Keys', icon: Lock }] : []),
     ...(isAdminOrManager ? [{ path: '/dlp', label: 'DLP', icon: Shield }] : []),
     ...(isAdminOrManager ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
-    ...(isAdminOrManager ? [{ path: '/span-logs', label: 'Span logs', icon: Activity }] : []),
     { path: '/users', label: 'Users', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
     { path: '/billing', label: 'Billing', icon: CreditCard },

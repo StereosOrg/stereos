@@ -154,34 +154,6 @@ router.post('/provider-keys', authMiddleware, requireAdmin, async (c) => {
       .set({ provider_keys: encryptedKeys })
       .where(eq(schema.customers.id, customer.id));
 
-    // Sync to Cloudflare AI Gateway
-    const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
-    const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
-
-    if (cfAccountId && cfApiToken && customer.cf_gateway_id) {
-      try {
-        const { createOrUpdateCfProviderConfig } = await import('../lib/cloudflare-ai.js');
-
-        // Create/update each provider config
-        for (const [provider, config] of Object.entries(encryptedKeys)) {
-          const configObj = config as { key?: string; enabled?: boolean; endpoint?: string };
-          if (configObj.enabled && configObj.key) {
-            await createOrUpdateCfProviderConfig(
-              cfAccountId,
-              cfApiToken,
-              customer.cf_gateway_id,
-              provider,
-              decryptKey(configObj.key),
-              configObj.endpoint
-            );
-          }
-        }
-      } catch (err) {
-        console.error('Failed to sync provider keys to Cloudflare:', err);
-        // Don't fail the request, but log the error
-      }
-    }
-
     return c.json({ success: true, message: 'Provider keys updated' });
   } catch (error) {
     console.error('Error updating provider keys:', error);
@@ -216,20 +188,6 @@ router.delete('/provider-keys/:provider', authMiddleware, requireAdmin, async (c
       .set({ provider_keys: providerKeys })
       .where(eq(schema.customers.id, customer.id));
 
-    // Delete from Cloudflare AI Gateway
-    const cfAccountId = (c.env as any)?.CF_ACCOUNT_ID || process.env.CF_ACCOUNT_ID;
-    const cfApiToken = (c.env as any)?.CF_AI_GATEWAY_API_TOKEN || process.env.CF_AI_GATEWAY_API_TOKEN;
-
-    if (cfAccountId && cfApiToken && customer.cf_gateway_id) {
-      try {
-        const { deleteCfProviderConfig } = await import('../lib/cloudflare-ai.js');
-        await deleteCfProviderConfig(cfAccountId, cfApiToken, customer.cf_gateway_id, provider);
-      } catch (err) {
-        console.error('Failed to delete provider config from Cloudflare:', err);
-        // Don't fail the request, but log the error
-      }
-    }
-
     return c.json({ success: true });
   } catch (error) {
     console.error('Error deleting provider key:', error);
@@ -258,7 +216,7 @@ router.get('/provider-keys/models', authMiddleware, async (c) => {
 
     // Define available models per provider
     const modelsByProvider: Record<string, string[]> = {
-      openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini'],
+      openai: ['gpt-5.2', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.2-pro', 'gpt-5', 'gpt-4.1'],
       anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
       google: ['gemini-1.5-pro', 'gemini-1.5-flash'],
       azure: ['gpt-4', 'gpt-4o', 'gpt-35-turbo'],
@@ -269,7 +227,7 @@ router.get('/provider-keys/models', authMiddleware, async (c) => {
     };
 
     const availableModels = enabledProviders.flatMap(provider =>
-      (modelsByProvider[provider] || []).map(model => `${provider}:${model}`)
+      (modelsByProvider[provider] || []).map(model => `${provider}/${model}`)
     );
 
     return c.json({

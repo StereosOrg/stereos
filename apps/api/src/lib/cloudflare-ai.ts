@@ -28,6 +28,11 @@ export type CfGatewayResponse = {
   rate_limiting_interval: number;
   created_at: string;
   dlp?: CfGatewayDlp;
+  otel?: Array<{
+    authorization?: string;
+    headers?: Record<string, string>;
+    url: string;
+  }>;
 };
 
 export type CfModel = {
@@ -205,10 +210,13 @@ export async function createOrUpdateCfProviderConfig(
   token: string,
   resourceName?: string
 ): Promise<void> {
-  const body: Record<string, string> = { provider, token };
-  if (resourceName) {
-    body.resource_name = resourceName;
-  }
+  // Build the request body according to Cloudflare's API
+  const body: Record<string, any> = {
+    provider_slug: provider,
+    secret: token,
+    alias: `${provider}-config`,
+    default_config: true,
+  };
 
   const res = await fetch(
     `${CF_API_BASE}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/provider-configs`,
@@ -228,14 +236,16 @@ export async function createOrUpdateCfProviderConfig(
 }
 
 // Delete provider config from a gateway
+// Uses the alias as the identifier since that's what we use when creating
 export async function deleteCfProviderConfig(
   accountId: string,
   apiToken: string,
   gatewayId: string,
   provider: string
 ): Promise<void> {
+  const alias = `${provider}-config`;
   const res = await fetch(
-    `${CF_API_BASE}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/provider-configs/${provider}`,
+    `${CF_API_BASE}/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/provider-configs/${alias}`,
     {
       method: 'DELETE',
       headers: {

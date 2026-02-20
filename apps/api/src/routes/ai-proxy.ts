@@ -43,6 +43,41 @@ type ParsedRequest = {
   rawBody: ArrayBuffer | null;
 };
 
+type Usage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+
+function parseUsageHeader(value: string): Usage | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  // Try JSON first
+  try {
+    const json = JSON.parse(trimmed) as Usage;
+    if (json && (json.prompt_tokens || json.completion_tokens || json.total_tokens)) {
+      return json;
+    }
+  } catch {
+    // fallthrough
+  }
+
+  // Try key=value pairs (e.g., "prompt_tokens=12, completion_tokens=34, total_tokens=46")
+  const parts = trimmed.split(',');
+  const usage: Usage = {};
+  for (const part of parts) {
+    const [rawKey, rawVal] = part.split('=').map((p) => p.trim());
+    if (!rawKey || !rawVal) continue;
+    const num = Number(rawVal);
+    if (!Number.isFinite(num)) continue;
+    if (rawKey === 'prompt_tokens') usage.prompt_tokens = num;
+    if (rawKey === 'completion_tokens') usage.completion_tokens = num;
+    if (rawKey === 'total_tokens') usage.total_tokens = num;
+  }
+  return usage.prompt_tokens || usage.completion_tokens || usage.total_tokens ? usage : null;
+}
+
 async function parseRequest(c: any): Promise<ParsedRequest> {
   const rawReq = c.req.raw as Request;
   const contentType = c.req.header('Content-Type') || null;
@@ -141,15 +176,23 @@ async function handleProxy(c: any, endpointPath: string) {
     }
 
     // 4. Parse request body to check model
-    const { model: requestedModel, contentType, rawBody } = await parseRequest(c);
+    const { model: rawRequestedModel, contentType, rawBody } = await parseRequest(c);
 
-    if (!requestedModel && c.req.method !== 'GET') {
+    if (!rawRequestedModel && c.req.method !== 'GET') {
       return c.json({ error: 'Model is required', code: 'model_required' }, 400);
     }
 
-    // 5. Check model allow-list
+    // Strip provider prefix from model (e.g., "openai/gpt-4o" -> "gpt-4o")
+    const requestedModel = rawRequestedModel?.includes('/') 
+      ? rawRequestedModel.split('/')[1] 
+      : rawRequestedModel;
+
+    // 5. Check model allow-list (also strip prefix from allowed_models for comparison)
     if (requestedModel && key.allowed_models && key.allowed_models.length > 0) {
-      if (!key.allowed_models.includes(requestedModel)) {
+      const normalizedAllowedModels = key.allowed_models.map(m => 
+        m.includes('/') ? m.split('/')[1] : m
+      );
+      if (!normalizedAllowedModels.includes(requestedModel)) {
         return c.json({
           error: `Model "${requestedModel}" not allowed for this key`,
           code: 'model_not_allowed',
@@ -196,6 +239,23 @@ async function handleProxy(c: any, endpointPath: string) {
 
     const cfUrl = `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${cfGatewayId}/${provider}${endpointPath}`;
 
+    // Modify body to strip provider prefix from model
+    let modifiedBody: Buffer | undefined;
+    if (rawBody && contentType?.includes('application/json')) {
+      try {
+        const bodyText = new TextDecoder().decode(rawBody);
+        const bodyJson = JSON.parse(bodyText);
+        if (bodyJson.model && bodyJson.model.includes('/')) {
+          bodyJson.model = bodyJson.model.split('/')[1];
+        }
+        modifiedBody = Buffer.from(JSON.stringify(bodyJson));
+      } catch {
+        modifiedBody = rawBody ? Buffer.from(rawBody) : undefined;
+      }
+    } else {
+      modifiedBody = rawBody ? Buffer.from(rawBody) : undefined;
+    }
+
     // Forward with provider key (BYOK)
     const headers: Record<string, string> = {
       'cf-aig-authorization': `Bearer ${cfApiToken}`,
@@ -208,15 +268,15 @@ async function handleProxy(c: any, endpointPath: string) {
     const cfResponse = await fetch(cfUrl, {
       method: c.req.method,
       headers,
-      body: rawBody ? Buffer.from(rawBody) : undefined,
+      body: modifiedBody,
     });
 
     const responseContentType = cfResponse.headers.get('content-type') || '';
     const isJson = responseContentType.includes('application/json');
-    let responseBody: { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } } | null = null;
+    let responseBody: { usage?: Usage } | null = null;
     if (isJson) {
       try {
-        responseBody = await cfResponse.json() as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
+        responseBody = await cfResponse.json() as { usage?: Usage };
       } catch {
         responseBody = null;
       }
@@ -225,9 +285,17 @@ async function handleProxy(c: any, endpointPath: string) {
     const durationMs = endTime - startTime;
 
     // 8. Extract token usage
-    const promptTokens = responseBody?.usage?.prompt_tokens || 0;
-    const completionTokens = responseBody?.usage?.completion_tokens || 0;
-    const totalTokens = responseBody?.usage?.total_tokens || (promptTokens + completionTokens);
+    const usageHeader =
+      cfResponse.headers.get('cf-aig-usage') ||
+      cfResponse.headers.get('x-usage') ||
+      cfResponse.headers.get('openai-usage') ||
+      cfResponse.headers.get('x-openai-usage');
+    const headerUsage = usageHeader ? parseUsageHeader(usageHeader) : null;
+    const usage = responseBody?.usage || headerUsage || {};
+
+    const promptTokens = usage.prompt_tokens || 0;
+    const completionTokens = usage.completion_tokens || 0;
+    const totalTokens = usage.total_tokens || (promptTokens + completionTokens);
 
     // 9. Record gateway usage event (best-effort)
     const telemetryUserId = key.user_id ?? key.created_by_user_id ?? key.customer?.user_id ?? null;
