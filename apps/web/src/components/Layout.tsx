@@ -29,7 +29,6 @@ export function Layout() {
   });
   const profileUser = (session?.user && (session.user as { role?: string }).role) ? session.user : me?.user ?? session?.user;
   const isAdminOrManager = !!profileUser && 'role' in profileUser && (profileUser.role === 'admin' || profileUser.role === 'manager');
-  const isAdmin = !!profileUser && 'role' in profileUser && profileUser.role === 'admin';
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
