@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import type { Database } from '@stereos/shared/db';
-import * as schema from '@stereos/shared/schema';
 import { aiGatewayKeys, gatewayEvents } from '@stereos/shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { checkBudget } from './ai-keys.js';
 import { ingestOtelSpans } from '../lib/telemetry-ingest.js';
@@ -76,6 +75,74 @@ function parseUsageHeader(value: string): Usage | null {
     if (rawKey === 'total_tokens') usage.total_tokens = num;
   }
   return usage.prompt_tokens || usage.completion_tokens || usage.total_tokens ? usage : null;
+}
+
+// Cost per million tokens (input, output) in USD
+const MODEL_PRICING: Record<string, [number, number]> = {
+  // OpenAI
+  'gpt-5.2': [1.75, 14.00],
+  'gpt-5.1': [1.25, 10.00],
+  'gpt-5': [1.25, 10.00],
+  'gpt-5-mini': [0.25, 2.00],
+  'gpt-5-nano': [0.05, 0.40],
+  'gpt-5.2-chat-latest': [1.75, 14.00],
+  'gpt-5.1-chat-latest': [1.25, 10.00],
+  'gpt-5-chat-latest': [1.25, 10.00],
+  'gpt-5.2-codex': [1.25, 14.00],
+  'gpt-5.1-codex-max': [1.25, 10.00],
+  'gpt-5.1-codex': [1.25, 10.00],
+  'gpt-5-codex': [1.25, 10.00],
+  'gpt-5.2-pro': [21.00, 168.00],
+  'gpt-5-pro': [15.00, 120.00],
+  'gpt-4.1': [2.00, 8.00],
+  'gpt-4.1-mini': [0.40, 1.60],
+  'gpt-4.1-nano': [0.10, 0.40],
+  'gpt-4o': [2.50, 10.00],
+  'gpt-4o-2024-05-13': [5.00, 15.00],
+  'gpt-4o-mini': [0.15, 0.60],
+  'o1': [15.00, 60.00],
+  'o1-pro': [150.00, 600.00],
+  'o3-pro': [20.00, 80.00],
+  'o3': [2.00, 8.00],
+  'o3-deep-research': [10.00, 40.00],
+  'o4-mini': [1.10, 4.40],
+  'o4-mini-deep-research': [2.00, 8.00],
+  'o3-mini': [1.10, 4.40],
+  'o1-mini': [1.10, 4.40],
+  'gpt-5.1-codex-mini': [0.25, 2.00],
+  'codex-mini-latest': [1.50, 6.00],
+  'gpt-5-search-api': [1.25, 10.00],
+  'gpt-4o-mini-search-preview': [0.15, 0.60],
+  'gpt-4o-search-preview': [2.50, 10.00],
+  // Anthropic
+  'claude-open-4-5': [5.00, 25.00],
+  'claude-opus-4-6': [5.00, 25.00],
+  'claude-open-4-1': [15.00, 75.00],
+  'claude-opus-4': [15.00, 75.00],
+  'claude-sonnet-4-6': [3.00, 15.00],
+  'claude-sonnet-4-5': [3.00, 15.00],
+  'claude-sonnet-4': [3.00, 15.00],
+  'claude-haiku-4-5': [1.00, 5.00],
+  'claude-haiku-3-5': [0.80, 4.00],
+};
+
+function calculateCostUsd(model: string, promptTokens: number, completionTokens: number): number {
+  // Find pricing by exact match or prefix match
+  let pricing: [number, number] | undefined = MODEL_PRICING[model];
+  if (!pricing) {
+    for (const [key, val] of Object.entries(MODEL_PRICING)) {
+      if (model.startsWith(key) || key.startsWith(model)) {
+        pricing = val;
+        break;
+      }
+    }
+  }
+  if (!pricing) {
+    // Default fallback: treat as mid-tier model
+    pricing = [3.00, 15.00];
+  }
+  const [inputPricePerM, outputPricePerM] = pricing;
+  return (promptTokens * inputPricePerM + completionTokens * outputPricePerM) / 1_000_000;
 }
 
 async function parseRequest(c: any): Promise<ParsedRequest> {
@@ -210,43 +277,21 @@ async function handleProxy(c: any, endpointPath: string) {
       return c.json({ error: 'AI Gateway not configured', code: 'gateway_not_configured' }, 503);
     }
 
-    // 7. Fetch customer's provider keys
-    const customerData = await db.query.customers.findFirst({
-      where: eq(schema.customers.id, key.customer_id),
-      columns: { provider_keys: true },
-    });
-
-    const providerKeys = (customerData?.provider_keys || {}) as Record<string, { key: string; enabled: boolean }>;
     const provider = requestedModel ? inferProvider(requestedModel) : 'openai';
-    
-    // Check if provider is configured and enabled
-    const providerConfig = providerKeys[provider];
-    if (!providerConfig || !providerConfig.enabled) {
-      return c.json({ 
-        error: `Provider "${provider}" not configured. Please ask your admin to configure ${provider} API keys in settings.`, 
-        code: 'provider_not_configured' 
-      }, 400);
-    }
-
-    // Decrypt provider key
-    const xorKey = process.env.PROVIDER_KEY_ENCRYPTION_SECRET || 'default-secret-change-me';
-    const encryptedKey = providerConfig.key;
-    const buffer = Buffer.from(encryptedKey, 'base64');
-    let providerApiKey = '';
-    for (let i = 0; i < buffer.length; i++) {
-      providerApiKey += String.fromCharCode(buffer[i] ^ xorKey.charCodeAt(i % xorKey.length));
-    }
-
     const cfUrl = `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${cfGatewayId}/${provider}${endpointPath}`;
 
-    // Modify body to strip provider prefix from model
+    // Modify body: strip provider prefix from model, inject stream usage option for OpenAI
     let modifiedBody: Buffer | undefined;
     if (rawBody && contentType?.includes('application/json')) {
       try {
         const bodyText = new TextDecoder().decode(rawBody);
-        const bodyJson = JSON.parse(bodyText);
-        if (bodyJson.model && bodyJson.model.includes('/')) {
+        const bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
+        if (typeof bodyJson.model === 'string' && bodyJson.model.includes('/')) {
           bodyJson.model = bodyJson.model.split('/')[1];
+        }
+        // Ask OpenAI to include usage in the final stream chunk
+        if (provider === 'openai' && bodyJson.stream === true) {
+          bodyJson.stream_options = { ...(typeof bodyJson.stream_options === 'object' && bodyJson.stream_options !== null ? bodyJson.stream_options as object : {}), include_usage: true };
         }
         modifiedBody = Buffer.from(JSON.stringify(bodyJson));
       } catch {
@@ -256,10 +301,8 @@ async function handleProxy(c: any, endpointPath: string) {
       modifiedBody = rawBody ? Buffer.from(rawBody) : undefined;
     }
 
-    // Forward with provider key (BYOK)
     const headers: Record<string, string> = {
       'cf-aig-authorization': `Bearer ${cfApiToken}`,
-      'Authorization': `Bearer ${providerApiKey}`,
     };
     if (contentType) {
       headers['Content-Type'] = contentType;
@@ -273,32 +316,55 @@ async function handleProxy(c: any, endpointPath: string) {
 
     const responseContentType = cfResponse.headers.get('content-type') || '';
     const isJson = responseContentType.includes('application/json');
+
+    // Read the full response body before extracting usage (needed for both paths)
     let responseBody: { usage?: Usage } | null = null;
+    let binary: ArrayBuffer | null = null;
     if (isJson) {
       try {
         responseBody = await cfResponse.json() as { usage?: Usage };
       } catch {
         responseBody = null;
       }
+    } else {
+      binary = await cfResponse.arrayBuffer();
     }
+
     const endTime = Date.now();
     const durationMs = endTime - startTime;
 
     // 8. Extract token usage
-    const usageHeader =
-      cfResponse.headers.get('cf-aig-usage') ||
-      cfResponse.headers.get('x-usage') ||
-      cfResponse.headers.get('openai-usage') ||
-      cfResponse.headers.get('x-openai-usage');
-    const headerUsage = usageHeader ? parseUsageHeader(usageHeader) : null;
-    const usage = responseBody?.usage || headerUsage || {};
+    let promptTokens = 0;
+    let completionTokens = 0;
 
-    const promptTokens = usage.prompt_tokens || 0;
-    const completionTokens = usage.completion_tokens || 0;
-    const totalTokens = usage.total_tokens || (promptTokens + completionTokens);
+    if (responseBody?.usage) {
+      // Non-streaming JSON: handle both OpenAI (prompt_tokens) and Anthropic (input_tokens)
+      const u = responseBody.usage as Record<string, number>;
+      promptTokens = u.prompt_tokens ?? u.input_tokens ?? 0;
+      completionTokens = u.completion_tokens ?? u.output_tokens ?? 0;
+    } else if (binary) {
+      // Streaming SSE: parse events for usage
+      const parsed = extractSseUsage(binary, provider);
+      promptTokens = parsed.prompt_tokens;
+      completionTokens = parsed.completion_tokens;
+    } else {
+      // Fallback: try response headers
+      const usageHeader =
+        cfResponse.headers.get('cf-aig-usage') ||
+        cfResponse.headers.get('x-usage') ||
+        cfResponse.headers.get('openai-usage') ||
+        cfResponse.headers.get('x-openai-usage');
+      const headerUsage = usageHeader ? parseUsageHeader(usageHeader) : null;
+      promptTokens = headerUsage?.prompt_tokens ?? 0;
+      completionTokens = headerUsage?.completion_tokens ?? 0;
+    }
 
-    // 9. Record gateway usage event (best-effort)
+    const totalTokens = promptTokens + completionTokens;
+
+    // 9. Record gateway usage event and update key spend (best-effort)
     const telemetryUserId = key.user_id ?? key.created_by_user_id ?? key.customer?.user_id ?? null;
+    const costUsd = calculateCostUsd(requestedModel || 'unknown', promptTokens, completionTokens);
+
     await db.insert(gatewayEvents).values({
       customer_id: key.customer_id,
       key_id: key.id,
@@ -315,6 +381,15 @@ async function handleProxy(c: any, endpointPath: string) {
     }).catch((error: unknown) => {
       console.warn('AI Proxy: failed to record gateway event', error);
     });
+
+    if (costUsd > 0 && cfResponse.ok) {
+      await db.update(aiGatewayKeys)
+        .set({ spend_usd: sql`spend_usd + ${costUsd.toFixed(6)}` })
+        .where(eq(aiGatewayKeys.id, key.id))
+        .catch((error: unknown) => {
+          console.warn('AI Proxy: failed to update key spend', error);
+        });
+    }
 
     // 10. Emit telemetry span (non-blocking)
     if (!telemetryUserId) {
@@ -345,14 +420,13 @@ async function handleProxy(c: any, endpointPath: string) {
       }
       return jsonResponse;
     }
-    const binary = await cfResponse.arrayBuffer();
     const headersOut: Record<string, string> = {};
     if (responseContentType) headersOut['Content-Type'] = responseContentType;
     if (debugEnabled) {
       headersOut['x-stereos-upstream-url'] = cfUrl;
       headersOut['x-stereos-upstream-status'] = String(cfResponse.status);
     }
-    return new Response(binary, { status: cfResponse.status, headers: headersOut });
+    return new Response(binary!, { status: cfResponse.status, headers: headersOut });
 
   } catch (error) {
     console.error('AI Proxy error:', error);
@@ -371,6 +445,44 @@ router.all('/images/generations', (c) => handleProxy(c, '/images/generations'));
 router.all('/audio/transcriptions', (c) => handleProxy(c, '/audio/transcriptions'));
 router.all('/audio/speech', (c) => handleProxy(c, '/audio/speech'));
 router.all('/moderations', (c) => handleProxy(c, '/moderations'));
+
+// Parse SSE stream body for token usage (OpenAI and Anthropic)
+function extractSseUsage(binary: ArrayBuffer, provider: string): { prompt_tokens: number; completion_tokens: number } {
+  const text = new TextDecoder().decode(binary);
+  let promptTokens = 0;
+  let completionTokens = 0;
+
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+    try {
+      const data = JSON.parse(line.slice(6)) as Record<string, unknown>;
+
+      if (provider === 'anthropic') {
+        // message_start: { type: 'message_start', message: { usage: { input_tokens, output_tokens } } }
+        const msg = (data as any)?.message;
+        if (data.type === 'message_start' && msg?.usage?.input_tokens !== undefined) {
+          promptTokens = msg.usage.input_tokens as number;
+          completionTokens = msg.usage.output_tokens ?? 0;
+        }
+        // message_delta: { type: 'message_delta', usage: { output_tokens } }
+        if (data.type === 'message_delta' && (data as any).usage?.output_tokens !== undefined) {
+          completionTokens = (data as any).usage.output_tokens as number;
+        }
+      } else {
+        // OpenAI: final chunk with stream_options.include_usage has top-level usage object
+        const u = (data as any).usage;
+        if (u?.prompt_tokens !== undefined) {
+          promptTokens = u.prompt_tokens as number;
+          completionTokens = u.completion_tokens ?? 0;
+        }
+      }
+    } catch {
+      // ignore malformed SSE lines
+    }
+  }
+
+  return { prompt_tokens: promptTokens, completion_tokens: completionTokens };
+}
 
 // Infer provider from model name
 function inferProvider(model: string): string {

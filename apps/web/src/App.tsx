@@ -22,7 +22,6 @@ import { KeyDetail } from './pages/KeyDetail';
 import { KeyManagement } from './pages/KeyManagement';
 import { AIGateway } from './pages/AIGateway';
 import { DLP } from './pages/DLP';
-import { ProviderKeys } from './pages/ProviderKeys';
 import { SpanLogs } from './pages/SpanLogs';
 
 import { SpanDetail } from './pages/SpanDetail';
@@ -72,7 +71,6 @@ function App() {
         <Route path="keys/:hash" element={<KeyDetail />} />
         <Route path="keys" element={<KeyManagement />} />
         <Route path="ai-gateway" element={<AIGateway />} />
-        <Route path="provider-keys" element={<ProviderKeys />} />
         <Route path="dlp" element={<DLP />} />
         
         <Route path="billing" element={<Billing />} />

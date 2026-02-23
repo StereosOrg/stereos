@@ -96,19 +96,6 @@ export function KeyManagement() {
     enabled: isAdminOrManager && modalType === 'team',
   });
 
-  const { data: modelsData } = useQuery<{ models: string[]; providers: string[] }>({
-    queryKey: ['provider-models'],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/provider-keys/models`, {
-        credentials: 'include',
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) throw new Error('Failed to fetch available models');
-      return res.json();
-    },
-    enabled: isAdminOrManager,
-  });
-
   const { data, isLoading, error } = useQuery<{ keys: KeyItem[] }>({
     queryKey: ['keys-customer'],
     queryFn: async () => {
@@ -162,7 +149,7 @@ export function KeyManagement() {
 
   const keys = data?.keys ?? [];
   const totalMonthlySpend = keys.reduce((sum, k) => sum + parseFloat(String(k.spend_usd ?? '0')), 0);
-  const models = modelsData?.models ?? [];
+  const models: string[] = [];
   const users = usersData?.users ?? [];
   const teams = teamsData?.teams ?? [];
   const customerId = customerData?.customer?.id;
