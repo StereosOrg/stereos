@@ -22,11 +22,11 @@
 </p>
 
 <p align="center">
-  <a href="https://join.slack.com/t/trystereos/shared_invite/zt-384mjl0hs-X2WTb8sc1xFrrDKULcgboQ"><img src="https://img.shields.io/endpoint?url=https://trystereos.com/slack-badge.json&style=flat-square" alt="Slack" /></a>
+  <a href="https://join.slack.com/t/trystereos/shared_invite/zt-384mjl0hs-X2WTb8sc1xFrrDKULcgboQ"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/trystereos/stereos/main/apps/web/public/slack-badge.json&style=flat-square" alt="Slack" /></a>
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/OpenTelemetry-000000?style=flat-square&logo=opentelemetry&logoColor=white" alt="OpenTelemetry" />
   <img src="https://img.shields.io/badge/Cloudflare%20AI%20Gateway-F38020?style=flat-square&logo=cloudflareworkers&logoColor=white" alt="Cloudflare AI Gateway" />
-  <img src="https://img.shields.io/endpoint?url=https://trystereos.com/zero-data-retention-badge.json&style=flat-square" alt="Zero Data Retention" />
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/trystereos/stereos/main/apps/web/public/zero-data-retention-badge.json&style=flat-square" alt="Zero Data Retention" />
   <a href="mailto:james@trystereos.com"><img src="https://img.shields.io/badge/james%40trystereos.com-6D4AFF?style=flat-square&logo=protonmail&logoColor=white" alt="Contact" /></a>
 </p>
 
