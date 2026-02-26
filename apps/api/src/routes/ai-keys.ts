@@ -2,9 +2,10 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import * as schema from '@stereos/shared/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, isNull, isNotNull } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { getCurrentUser, getCustomerForUser } from '../lib/middleware.js';
+import { trackManagedKeysUsage } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
 import type { Database } from '@stereos/shared/db';
 
@@ -76,6 +77,31 @@ router.post('/ai/keys/user', requireAuth, requireAdminOrManager, zValidator('jso
   const createdByUserId = c.get('user')?.id;
 
   try {
+    // Enforce trial limits
+    const customer = await db.query.customers.findFirst({
+      where: eq(schema.customers.id, data.customer_id),
+      columns: { billing_status: true },
+    });
+
+    let effectiveBudgetUsd = data.budget_usd || null;
+
+    if (customer?.billing_status === 'trial') {
+      const existingUserKeys = await db.query.aiGatewayKeys.findMany({
+        where: and(
+          eq(schema.aiGatewayKeys.customer_id, data.customer_id),
+          isNull(schema.aiGatewayKeys.team_id)
+        ),
+        columns: { id: true },
+      });
+      if (existingUserKeys.length >= 1) {
+        return c.json({ error: 'Trial accounts are limited to 1 user key' }, 403);
+      }
+      const TRIAL_MAX_BUDGET = 20;
+      if (!effectiveBudgetUsd || parseFloat(effectiveBudgetUsd) > TRIAL_MAX_BUDGET) {
+        effectiveBudgetUsd = TRIAL_MAX_BUDGET.toFixed(2);
+      }
+    }
+
     // Generate virtual key
     const rawKey = generateVirtualKey();
     const keyHash = hashKey(rawKey);
@@ -100,12 +126,15 @@ router.post('/ai/keys/user', requireAuth, requireAdminOrManager, zValidator('jso
       team_id: data.team_id || null,
       key_hash: keyHash,
       name: data.name,
-      budget_usd: data.budget_usd || null,
+      budget_usd: effectiveBudgetUsd,
       budget_reset: data.budget_reset || null,
       spend_reset_at: spendResetAt,
       allowed_models: data.allowed_models || null,
       created_by_user_id: createdByUserId || null,
     }).returning();
+
+    const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+    await trackManagedKeysUsage(db, data.customer_id, 1, undefined, stripeKey);
 
     return c.json({
       id: key.id,
@@ -129,6 +158,31 @@ router.post('/ai/keys/team/:teamId', requireAuth, requireAdminOrManager, zValida
   const createdByUserId = c.get('user')?.id;
 
   try {
+    // Enforce trial limits
+    const customer = await db.query.customers.findFirst({
+      where: eq(schema.customers.id, data.customer_id),
+      columns: { billing_status: true },
+    });
+
+    let effectiveBudgetUsd = data.budget_usd || null;
+
+    if (customer?.billing_status === 'trial') {
+      const existingTeamKeys = await db.query.aiGatewayKeys.findMany({
+        where: and(
+          eq(schema.aiGatewayKeys.customer_id, data.customer_id),
+          isNotNull(schema.aiGatewayKeys.team_id)
+        ),
+        columns: { id: true },
+      });
+      if (existingTeamKeys.length >= 2) {
+        return c.json({ error: 'Trial accounts are limited to 2 team keys' }, 403);
+      }
+      const TRIAL_MAX_BUDGET = 10;
+      if (!effectiveBudgetUsd || parseFloat(effectiveBudgetUsd) > TRIAL_MAX_BUDGET) {
+        effectiveBudgetUsd = TRIAL_MAX_BUDGET.toFixed(2);
+      }
+    }
+
     // Verify user is on the team
     const membership = await db.query.teamMembers.findFirst({
       where: and(
@@ -162,12 +216,15 @@ router.post('/ai/keys/team/:teamId', requireAuth, requireAdminOrManager, zValida
       user_id: null,
       key_hash: keyHash,
       name: data.name,
-      budget_usd: data.budget_usd || null,
+      budget_usd: effectiveBudgetUsd,
       budget_reset: data.budget_reset || null,
       spend_reset_at: spendResetAt,
       allowed_models: data.allowed_models || null,
       created_by_user_id: createdByUserId || null,
     }).returning();
+
+    const stripeKey = (c as { env?: { STRIPE_SECRET_KEY?: string } }).env?.STRIPE_SECRET_KEY;
+    await trackManagedKeysUsage(db, data.customer_id, 1, undefined, stripeKey);
 
     return c.json({
       id: key.id,

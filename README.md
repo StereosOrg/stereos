@@ -1,29 +1,86 @@
-# Stereos - Collaboration-First LLM Telemetry
+<p align="center">
+  <img src="./apps/web/public/gh-image.png" alt="Stereos — Private Organizational AI Gateway" width="100%" />
+</p>
 
-Stereos is a collaboration‑first platform that captures **LLM spans** (OTLP/GenAI telemetry) and turns them into team‑level visibility, user profiles, and diff drilldowns. It focuses on what happened, who did it, and how it changed the code.
+<p align="center">
+  <a href="https://join.slack.com/t/trystereos/shared_invite"><img src="https://img.shields.io/badge/Slack-4A154B?style=flat&logo=slack&logoColor=white" alt="Slack" /></a>
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/OpenTelemetry-000000?style=flat&logo=opentelemetry&logoColor=white" alt="OpenTelemetry" />
+  <img src="https://img.shields.io/badge/Cloudflare%20AI%20Gateway-F38020?style=flat&logo=cloudflare&logoColor=white" alt="Cloudflare AI Gateway" />
+  <img src="https://img.shields.io/badge/Zero%20Data%20Retention-009688?style=flat&logoColor=white" alt="Zero Data Retention" />
+  <a href="mailto:james@trystereos.com"><img src="https://img.shields.io/badge/james%40trystereos.com-6D4AFF?style=flat&logo=protonmail&logoColor=white" alt="Contact" /></a>
+</p>
+
+<h1 align="center">Stereos</h1>
+<p align="center"><strong>You don't need archaic AI usage policies to protect your data.</strong><br/>Give your team the freedom to innovate with the tools they love, while maintaining control and visibility over your organization's AI usage.</p>
+
+---
+
+Stereos is a **private organizational AI gateway** built for engineering teams. Route all AI traffic through your own gateway with virtual key management, per-key budget controls, model allowlists, and full OpenTelemetry observability — without your prompts or completions ever leaving your infrastructure.
+
+## Features
+
+**AI Gateway**
+- OpenAI-compatible proxy endpoint (`/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, and more)
+- Backed by [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) — per-customer provisioned gateways with caching, rate limiting, and logpush
+- Automatic provider routing (OpenAI, Anthropic, Workers AI) inferred from model name
+
+**Virtual Key Management**
+- Issue scoped virtual keys to users and teams — no direct provider key exposure
+- Per-key budget limits with daily / weekly / monthly reset cycles
+- Per-key model allowlists
+- Real-time spend tracking with automatic budget enforcement
+
+**Zero Data Retention**
+- Telemetry is span-based (token counts, latency, model, status) — no prompt or completion content stored
+- Privacy Mode enforced: usage metrics only
+
+**OpenTelemetry Observability**
+- OTLP span ingestion at `/v1/traces`
+- Dashboard with spend, active users (30d), and span logs
+- Per-user and per-team activity profiles
+- Diff drilldowns via `tool.output.diff`
+- Vendor/service rollups (ToolProfile)
+
+**Team Collaboration & RBAC**
+- `admin / manager / user` roles
+- Team-scoped API tokens
+- User and team management with profiles
+
+**Billing**
+- Stripe Pay-as-you-go with metered usage (AI proxy cost, managed keys, telemetry events)
+- 14-day free trial, subscription lifecycle webhooks
+
+**Data Loss Prevention**
+- Scans AI requests for sensitive patterns (credit cards, SSNs, government IDs)
+- Configurable action: block or flag
 
 ## Architecture
 
 ```
-[ Agent / App / Proxy ]
-          |
-          v
-   Hono Ingest API  ──► Spans Store (Postgres)
-          |
-          v
-   Query API  ──► React Client (RCC)
-          |
-          v
-  Auth (Better Auth) + Billing (Stripe Pay‑as‑you‑go)
+[ Agent / App / Claude Code / IDE ]
+              │
+              ▼
+   Virtual Key Auth + Budget Check
+              │
+              ▼
+  Cloudflare AI Gateway (per-customer)
+              │
+         ┌────┴────┐
+         ▼         ▼
+      OpenAI    Anthropic  (Workers AI, ...)
+              │
+              ▼
+  Token Usage Extraction (SSE + JSON)
+              │
+         ┌────┴────────────┐
+         ▼                 ▼
+   GatewayEvent       Stripe Meter
+   (Postgres)         (ai_proxy_usage)
+              │
+              ▼
+   OTel Span → /v1/traces → Dashboard
 ```
-
-## Core Principles
-
-- **Spans-first**: All data is derived from OTLP spans (trace + metrics)
-- **Collaboration-ready**: Users + Teams with admin/manager roles
-- **Auditability**: Diff drilldowns via `tool.output.diff`
-- **Simple ingestion**: OTLP JSON ingest + chat‑proxy spans
-- **RBAC**: admin / manager / user
 
 ## Quick Start
 
@@ -31,200 +88,121 @@ Stereos is a collaboration‑first platform that captures **LLM spans** (OTLP/Ge
 
 - Node.js 20+
 - PostgreSQL 14+
-- Stripe account (for billing)
+- Stripe account
+- Cloudflare account (for AI Gateway provisioning)
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone <repo-url>
+git clone https://github.com/your-org/stereos
 cd stereos
-
-# Install dependencies
 npm install
-
-# Set up environment variables
 cp .env.example .env
-# Edit .env with your values
-
-# Run database migrations
+# Fill in DATABASE_URL, STRIPE_SECRET_KEY, CF_ACCOUNT_ID, CF_AI_GATEWAY_API_TOKEN
 npm run db:migrate
-
-# Start development servers
 npm run dev
 ```
 
-The API will be available at `http://localhost:3000` and the web UI at `http://localhost:5173`.
+API: `http://localhost:3000` · Web UI: `http://localhost:5173`
 
 ### Testing
 
 ```bash
-# Run all tests (requires npm install)
 npm run test
 ```
 
-Tests include:
-- **Unit tests**: `vendor-map` (canonicalizeVendor, flattenOtelAttributes, isLLMTool)
-- **API tests**: Health, 404, onboarding status, auth-protected routes (401), traces endpoint
+## AI Gateway Usage
 
-### OpenAPI Schema
-
-The API is documented with OpenAPI 3.1 at `openapi.yaml`. Use it with Swagger UI, Redoc, or code generators.
+Point any OpenAI-compatible client at Stereos and use a virtual key:
 
 ```bash
-# Validate schema (with openapi-generator or swagger-cli)
-npx @redocly/cli lint openapi.yaml
-```
-
-## API Usage
-
-### Authentication
-
-All endpoints use **Bearer tokens** (no cookies). Tokens are **team‑scoped** for admins/managers and always force a `team_id` on spans.
-
-**1. Get your customer ID** (from the app Settings or via API):
-
-```bash
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  http://localhost:3000/v1/customers/me
-```
-
-**2. Create an API token** (admin/manager only; must include `team_id`):
-
-```bash
-curl -X POST http://localhost:3000/v1/tokens \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+curl https://api.trystereos.com/v1/chat/completions \
+  -H "Authorization: Bearer stereos_<your_virtual_key>" \
   -H "Content-Type: application/json" \
-  -d '{"customer_id":"YOUR_CUSTOMER_ID","team_id":"YOUR_TEAM_ID","name":"CLI"}'
+  -d '{
+    "model": "anthropic/claude-sonnet-4-6",
+    "messages": [{ "role": "user", "content": "Hello" }]
+  }'
 ```
 
-Copy the `token` value from the response (it starts with `sk_`). Use it as `Authorization: Bearer sk_...`.
+Provider prefix is optional — `anthropic/claude-sonnet-4-6` and `claude-sonnet-4-6` both work.
 
-**Important:** For curl line continuation, there must be **no space** after the backslash. Or use a one‑liner.
+### Supported Models
 
-### Trace Ingestion (OpenRouter Broadcast)
+| Provider | Models |
+|----------|--------|
+| OpenAI | `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `o3`, `o4-mini`, and more |
+| Anthropic | `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`, and more |
+| Cloudflare Workers AI | `@cf/` and `@hf/` models |
 
-Spans are received via **OpenRouter Broadcast**. Clients use Stereos-provisioned OpenRouter keys and pass `user` (Stereos user ID) in the request body. OpenRouter sends traces to Stereos with Privacy Mode (no prompts/completions).
-
-**1. Provision OpenRouter key** (admin/manager only):
+### Provision a Gateway & Create Keys
 
 ```bash
-curl -X POST http://localhost:3000/v1/keys \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+# Provision a Cloudflare AI Gateway for your customer
+curl -X POST https://api.trystereos.com/v1/ai/gateway/provision \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Create a user key with a $50 monthly budget
+curl -X POST https://api.trystereos.com/v1/ai/keys/user \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Team Key","customer_id":"YOUR_CUSTOMER_ID","user_id":"USER_ID","limit":100,"limit_reset":"monthly"}'
+  -d '{
+    "name": "alice-key",
+    "customer_id": "CUSTOMER_UUID",
+    "user_id": "USER_UUID",
+    "budget_usd": "50.00",
+    "budget_reset": "monthly",
+    "allowed_models": ["anthropic/claude-sonnet-4-6", "openai/gpt-4o"]
+  }'
 ```
 
-Copy the `key` from the response. Use it with OpenRouter.
+## OTel Ingestion
 
-**2. Configure OpenRouter Broadcast**
+Send OTLP/JSON spans directly to Stereos:
 
-In [OpenRouter Settings > Observability](https://openrouter.ai/settings/observability), enable Broadcast and add OpenTelemetry Collector:
+```bash
+curl -X POST https://api.trystereos.com/v1/traces \
+  -H "Authorization: Bearer YOUR_BROADCAST_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{ "resourceSpans": [...] }'
+```
+
+Or configure your OpenRouter Broadcast endpoint to push spans automatically:
 - **Endpoint:** `https://api.trystereos.com/v1/traces`
-- **Headers:** `{ "Authorization": "Bearer <OPENROUTER_BROADCAST_SECRET>" }`
-- **Privacy Mode:** enabled (excludes prompt/completion; keeps token usage, cost, timing)
-
-**3. Client usage**
-
-When calling OpenRouter, pass `user: "<stereos_user_id>"` in the request body so Stereos can attribute usage. Optionally pass `team_id` via trace metadata for team-level dashboards:
-
-```json
-{
-  "model": "openai/gpt-4o",
-  "messages": [...],
-  "user": "<stereos_user_id>",
-  "trace": { "metadata": { "team_id": "<stereos_team_id>" } }
-}
-```
-
-If `team_id` is omitted, Stereos derives it from the user's team membership when possible.
-
-### User Management (Admin Only)
-
-```bash
-# List all users (admin only)
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  http://localhost:3000/v1/users
-
-# Get detailed user profile (admin only)
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  http://localhost:3000/v1/users/USER_ID/profile
-
-# Update user role (admin only)
-curl -X PATCH http://localhost:3000/v1/users/USER_ID/role \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"role":"manager"}'
-
-# Assign team (admin only)
-curl -X PATCH http://localhost:3000/v1/users/USER_ID/team \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"team_id":"TEAM_ID"}'
-```
-
-### Team Management (Admin Only)
-
-```bash
-# List teams
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  http://localhost:3000/v1/teams
-
-# Create team (must specify manager/admin user)
-curl -X POST http://localhost:3000/v1/teams \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Alpha","manager_user_id":"USER_ID"}'
-
-# Team profile metrics
-curl -H "Authorization: Bearer YOUR_API_TOKEN" \
-  http://localhost:3000/v1/teams/TEAM_ID/profile
-```
+- **Privacy Mode:** enabled (token usage, cost, timing — no prompts/completions)
 
 ## Project Structure
 
 ```
 stereos/
 ├── apps/
-│   ├── api/                 # Hono API server
-│   │   ├── src/
-│   │   │   ├── lib/         # Auth, Stripe config
-│   │   │   ├── routes/      # API routes
-│   │   │   └── index.ts     # Server entry
-│   │   └── package.json
-│   └── web/                 # React frontend
-│       ├── src/
-│       │   ├── components/  # React components
-│       │   ├── pages/       # Page components
-│       │   └── main.tsx     # App entry
-│       └── package.json
+│   ├── api/                 # Hono API server (TypeScript)
+│   │   └── src/
+│   │       ├── lib/         # Stripe, auth, telemetry
+│   │       └── routes/      # ai-proxy, ai-keys, traces, users, teams...
+│   └── web/                 # React 19 + Vite frontend
+│       └── src/
+│           ├── components/
+│           └── pages/
 ├── packages/
-│   └── shared/              # Shared types & DB schema
-│       ├── src/
-│       │   ├── schema.ts    # Drizzle schema
-│       │   └── db.ts        # Database client
-│       └── package.json
-├── drizzle/                 # Database migrations
-│   └── migrations/
-├── .env.example
-├── package.json
-└── README.md
+│   └── shared/              # Drizzle schema + DB client
+├── drizzle/                 # Migrations
+└── openapi.yaml             # OpenAPI 3.1 spec
 ```
 
-## Database Schema (High Level)
+## Tech Stack
 
-- **users** - Better Auth users with `role: admin | manager | user`
-- **teams** - Team records with `profile_pic`
-- **team_members** - Membership (requires at least one manager/admin per team)
-- **apiTokens** - Team‑scoped API tokens
-- **TelemetrySpan** - OTLP spans
-- **TelemetryMetric** - OTLP metrics
-- **ToolProfile** - Vendor/service rollups
+| Layer | Technology |
+|-------|-----------|
+| API | [Hono](https://hono.dev), TypeScript, Node.js 20+ |
+| Database | PostgreSQL 14+, [Drizzle ORM](https://orm.drizzle.team) |
+| Auth | [Better Auth](https://www.better-auth.com) (Bearer token, no cookies) |
+| Frontend | React 19, React Router 7, TanStack Query, Vite |
+| Billing | [Stripe](https://stripe.com) (metered usage + subscriptions) |
+| Gateway | [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) |
+| Observability | [OpenTelemetry](https://opentelemetry.io) (OTLP/JSON) |
+| Email | [Resend](https://resend.com) |
 
-## UI Highlights
+## License
 
-- **Dashboard**: spans‑based totals + most active user (30d)
-- **Users**: role/team assignment + individual profiles
-- **Teams**: admin‑only creation + team profiles
-- **Diff Drilldowns**: view `tool.output.diff` per span
-
+See [LICENSE.md](./LICENSE.md).

@@ -23,9 +23,14 @@ export const PRICE_ID_FLAT_MONTHLY = env('STRIPE_PRICE_FLAT_MONTHLY', 'price_1T1
 /** Managed keys: metered, per OpenRouter key created in portal */
 export const PRICE_ID_MANAGED_KEYS = env('STRIPE_PRICE_MANAGED_KEYS', 'price_1T0bTQFRJliLrxgl0Hu8D8GO');
 
+/** AI Proxy Usage: metered per microdollar of cost (with markup). Configure Stripe price with
+ *  transform_quantity: { divide_by: 1_000_000, round: 'nearest' } and unit_amount: 100 ($1.00). */
+export const PRICE_ID_AI_PROXY_USAGE = env('STRIPE_PRICE_AI_PROXY_USAGE', '');
+
 /** Stripe meter event names (must match meters in Stripe Dashboard) */
 export const STRIPE_METER_EVENT_TELEMETRY_EVENTS = env('STRIPE_METER_TELEMETRY_EVENTS', 'telemetry_events');
 export const STRIPE_METER_EVENT_MANAGED_KEYS = env('STRIPE_METER_MANAGED_KEYS', 'managed_keys');
+export const STRIPE_METER_EVENT_AI_PROXY_USAGE = env('STRIPE_METER_AI_PROXY_USAGE', 'ai_proxy_usage');
 
 /** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
 export function getStripe(apiKey?: string): Stripe | null {
@@ -142,6 +147,37 @@ export async function trackManagedKeysUsage(
   }
 }
 
+/** Track AI proxy usage cost. Reports microdollars to the ai_proxy_usage Stripe meter.
+ *  The Stripe price must be configured with transform_quantity: { divide_by: 1_000_000 }
+ *  and unit_amount: 100 ($1.00) so that reported microdollars map 1:1 to charged USD. */
+export async function trackAiProxyUsage(
+  db: Database,
+  customerId: string,
+  costUsd: number,
+  stripeApiKey?: string
+): Promise<void> {
+  if (costUsd <= 0) return;
+  const microdollars = Math.round(costUsd * 1_000_000);
+  if (microdollars <= 0) return;
+
+  const idempotencyKey = `${customerId}-ai_proxy-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+  const customer = await db.query.customers.findFirst({
+    where: eq(customers.id, customerId),
+    columns: { customer_stripe_id: true },
+  });
+  if (customer?.customer_stripe_id) {
+    await createStripeMeterEvent(
+      STRIPE_METER_EVENT_AI_PROXY_USAGE,
+      customer.customer_stripe_id,
+      microdollars,
+      new Date(),
+      idempotencyKey,
+      stripeApiKey
+    );
+  }
+}
+
 // Create Stripe Checkout Session (custom UI) for start-trial. Pass stripeApiKey in Workers.
 export async function createEmbeddedCheckoutSession(
   customerId: string,
@@ -165,6 +201,7 @@ export async function createEmbeddedCheckoutSession(
         { price: PRICE_ID_TELEMETRY_EVENTS },
         { price: PRICE_ID_MANAGED_KEYS },
         { price: PRICE_ID_FLAT_MONTHLY, quantity: 1 },
+        ...(PRICE_ID_AI_PROXY_USAGE ? [{ price: PRICE_ID_AI_PROXY_USAGE }] : []),
       ],
       subscription_data: {
         trial_period_days: 14,

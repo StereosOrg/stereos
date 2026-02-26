@@ -5,6 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { checkBudget } from './ai-keys.js';
 import { ingestOtelSpans } from '../lib/telemetry-ingest.js';
+import { trackAiProxyUsage } from '../lib/stripe.js';
 import type { AppVariables } from '../types/app.js';
 
 
@@ -77,56 +78,56 @@ function parseUsageHeader(value: string): Usage | null {
   return usage.prompt_tokens || usage.completion_tokens || usage.total_tokens ? usage : null;
 }
 
-// Cost per million tokens (input, output) in USD
+// Cost per million tokens (input, output) in USD — 20% markup over provider prices
 const MODEL_PRICING: Record<string, [number, number]> = {
   // OpenAI
-  'gpt-5.2': [1.75, 14.00],
-  'gpt-5.1': [1.25, 10.00],
-  'gpt-5': [1.25, 10.00],
-  'gpt-5-mini': [0.25, 2.00],
-  'gpt-5-nano': [0.05, 0.40],
-  'gpt-5.2-chat-latest': [1.75, 14.00],
-  'gpt-5.1-chat-latest': [1.25, 10.00],
-  'gpt-5-chat-latest': [1.25, 10.00],
-  'gpt-5.2-codex': [1.25, 14.00],
-  'gpt-5.1-codex-max': [1.25, 10.00],
-  'gpt-5.1-codex': [1.25, 10.00],
-  'gpt-5-codex': [1.25, 10.00],
-  'gpt-5.2-pro': [21.00, 168.00],
-  'gpt-5-pro': [15.00, 120.00],
-  'gpt-4.1': [2.00, 8.00],
-  'gpt-4.1-mini': [0.40, 1.60],
-  'gpt-4.1-nano': [0.10, 0.40],
-  'gpt-4o': [2.50, 10.00],
-  'gpt-4o-2024-05-13': [5.00, 15.00],
-  'gpt-4o-mini': [0.15, 0.60],
-  'o1': [15.00, 60.00],
-  'o1-pro': [150.00, 600.00],
-  'o3-pro': [20.00, 80.00],
-  'o3': [2.00, 8.00],
-  'o3-deep-research': [10.00, 40.00],
-  'o4-mini': [1.10, 4.40],
-  'o4-mini-deep-research': [2.00, 8.00],
-  'o3-mini': [1.10, 4.40],
-  'o1-mini': [1.10, 4.40],
-  'gpt-5.1-codex-mini': [0.25, 2.00],
-  'codex-mini-latest': [1.50, 6.00],
-  'gpt-5-search-api': [1.25, 10.00],
-  'gpt-4o-mini-search-preview': [0.15, 0.60],
-  'gpt-4o-search-preview': [2.50, 10.00],
+  'gpt-5.2': [2.10, 16.80],
+  'gpt-5.1': [1.50, 12.00],
+  'gpt-5': [1.50, 12.00],
+  'gpt-5-mini': [0.30, 2.40],
+  'gpt-5-nano': [0.06, 0.48],
+  'gpt-5.2-chat-latest': [2.10, 16.80],
+  'gpt-5.1-chat-latest': [1.50, 12.00],
+  'gpt-5-chat-latest': [1.50, 12.00],
+  'gpt-5.2-codex': [1.50, 16.80],
+  'gpt-5.1-codex-max': [1.50, 12.00],
+  'gpt-5.1-codex': [1.50, 12.00],
+  'gpt-5-codex': [1.50, 12.00],
+  'gpt-5.2-pro': [25.20, 201.60],
+  'gpt-5-pro': [18.00, 144.00],
+  'gpt-4.1': [2.40, 9.60],
+  'gpt-4.1-mini': [0.48, 1.92],
+  'gpt-4.1-nano': [0.12, 0.48],
+  'gpt-4o': [3.00, 12.00],
+  'gpt-4o-2024-05-13': [6.00, 18.00],
+  'gpt-4o-mini': [0.18, 0.72],
+  'o1': [18.00, 72.00],
+  'o1-pro': [180.00, 720.00],
+  'o3-pro': [24.00, 96.00],
+  'o3': [2.40, 9.60],
+  'o3-deep-research': [12.00, 48.00],
+  'o4-mini': [1.32, 5.28],
+  'o4-mini-deep-research': [2.40, 9.60],
+  'o3-mini': [1.32, 5.28],
+  'o1-mini': [1.32, 5.28],
+  'gpt-5.1-codex-mini': [0.30, 2.40],
+  'codex-mini-latest': [1.80, 7.20],
+  'gpt-5-search-api': [1.50, 12.00],
+  'gpt-4o-mini-search-preview': [0.18, 0.72],
+  'gpt-4o-search-preview': [3.00, 12.00],
   // Anthropic
-  'claude-open-4-5': [5.00, 25.00],
-  'claude-opus-4-6': [5.00, 25.00],
-  'claude-open-4-1': [15.00, 75.00],
-  'claude-opus-4': [15.00, 75.00],
-  'claude-sonnet-4-6': [3.00, 15.00],
-  'claude-sonnet-4-5': [3.00, 15.00],
-  'claude-sonnet-4': [3.00, 15.00],
-  'claude-haiku-4-5': [1.00, 5.00],
-  'claude-haiku-3-5': [0.80, 4.00],
+  'claude-open-4-5': [6.00, 30.00],
+  'claude-opus-4-6': [6.00, 30.00],
+  'claude-open-4-1': [18.00, 90.00],
+  'claude-opus-4': [18.00, 90.00],
+  'claude-sonnet-4-6': [3.60, 18.00],
+  'claude-sonnet-4-5': [3.60, 18.00],
+  'claude-sonnet-4': [3.60, 18.00],
+  'claude-haiku-4-5': [1.20, 6.00],
+  'claude-haiku-3-5': [0.96, 4.80],
 };
 
-function calculateCostUsd(model: string, promptTokens: number, completionTokens: number): number {
+export function calculateCostUsd(model: string, promptTokens: number, completionTokens: number): number {
   // Find pricing by exact match or prefix match
   let pricing: [number, number] | undefined = MODEL_PRICING[model];
   if (!pricing) {
@@ -138,8 +139,8 @@ function calculateCostUsd(model: string, promptTokens: number, completionTokens:
     }
   }
   if (!pricing) {
-    // Default fallback: treat as mid-tier model
-    pricing = [3.00, 15.00];
+    // Default fallback: treat as mid-tier model (with 20% markup)
+    pricing = [3.60, 18.00];
   }
   const [inputPricePerM, outputPricePerM] = pricing;
   return (promptTokens * inputPricePerM + completionTokens * outputPricePerM) / 1_000_000;
@@ -206,6 +207,7 @@ async function handleProxy(c: any, endpointPath: string) {
             id: true,
             cf_gateway_id: true,
             user_id: true,
+            billing_status: true,
           },
         },
         user: {
@@ -230,6 +232,15 @@ async function handleProxy(c: any, endpointPath: string) {
     // 2. Check if key is disabled
     if (key.disabled) {
       return c.json({ error: 'Key is disabled', code: 'key_disabled' }, 403);
+    }
+
+    // 2.5. Check billing status — block lapsed trials and canceled subscriptions
+    const billingStatus = key.customer?.billing_status;
+    if (billingStatus === 'past_due' || billingStatus === 'canceled') {
+      return c.json({
+        error: 'Subscription inactive - please update your billing to continue',
+        code: 'subscription_inactive',
+      }, 403);
     }
 
     // 3. Check budget
@@ -389,6 +400,11 @@ async function handleProxy(c: any, endpointPath: string) {
         .catch((error: unknown) => {
           console.warn('AI Proxy: failed to update key spend', error);
         });
+
+      const stripeKey = (c.env as any)?.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
+      trackAiProxyUsage(db, key.customer_id, costUsd, stripeKey).catch((error: unknown) => {
+        console.warn('AI Proxy: failed to report usage to Stripe', error);
+      });
     }
 
     // 10. Emit telemetry span (non-blocking)
