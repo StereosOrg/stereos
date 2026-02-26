@@ -15,7 +15,7 @@
     ·
     <a href="https://trystereos.com">Website</a>
     ·
-    <a href="https://github.com/your-org/stereos/issues">Issues</a>
+    <a href="https://github.com/StereosOrg/stereos/issues">Issues</a>
     ·
     <a href="mailto:james@trystereos.com">Contact</a>
   </p>
@@ -54,7 +54,7 @@ You don't need archaic AI usage policies to protect your data. Give your team th
 1. Clone the repo
 
    ```sh
-   git clone https://github.com/your-org/stereos
+   git clone https://github.com/StereosOrg/stereos
    cd stereos
    ```
 
