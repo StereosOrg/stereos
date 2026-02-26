@@ -26,7 +26,7 @@
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/OpenTelemetry-000000?style=flat-square&logo=opentelemetry&logoColor=white" alt="OpenTelemetry" />
   <img src="https://img.shields.io/badge/Cloudflare%20AI%20Gateway-F38020?style=flat-square&logo=cloudflareworkers&logoColor=white" alt="Cloudflare AI Gateway" />
-  <img src="./apps/web/public/zero-data-retention-badge.svg" alt="Zero Data Retention" />
+  <img src="./apps/web/public/zero-data-retention-badge.svg" alt="Zero Data Retention" height="20" />
   <a href="mailto:james@trystereos.com"><img src="https://img.shields.io/badge/james%40trystereos.com-6D4AFF?style=flat-square&logo=protonmail&logoColor=white" alt="Contact" /></a>
 </p>
 
