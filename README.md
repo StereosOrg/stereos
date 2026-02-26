@@ -36,7 +36,7 @@
 
 # Agentic engineering, unleashed
 
-Stereos is a **private organizational AI gateway** built for engineering teams. Route all AI traffic through your own gateway with virtual key management, per-key budget controls, model allowlists, and full OpenTelemetry observability — without your prompts or completions ever leaving your infrastructure.
+Stereos is a **private organizational AI gateway** built for putting practical enablement of agentic engineering over strict blanket policy. Stereos allows you and your security leadership to feel confident in your teams AI usage by routing all AI traffic through your own ZDR-enforced gateway with virtual key management, per-key budget controls, model allowlists, and full OpenTelemetry observability — without your prompts or completions ever leaving your infrastructure.
 
 You don't need archaic AI usage policies to protect your data. Give your team the freedom to use the tools they love, while maintaining full control and visibility over your organization's AI usage.
 
