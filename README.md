@@ -40,77 +40,6 @@ Stereos is a **private organizational AI gateway** built for engineering teams. 
 
 You don't need archaic AI usage policies to protect your data. Give your team the freedom to use the tools they love, while maintaining full control and visibility over your organization's AI usage.
 
-## Features
-
-### AI Gateway
-
-- OpenAI-compatible proxy endpoint (`/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, and more)
-- Backed by [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) — per-customer provisioned gateways with caching, rate limiting, and logpush
-- Automatic provider routing (OpenAI, Anthropic, Workers AI) inferred from model name
-
-### Virtual Key Management
-
-- Issue scoped virtual keys to users and teams — no direct provider key exposure
-- Per-key budget limits with daily / weekly / monthly reset cycles
-- Per-key model allowlists
-- Real-time spend tracking with automatic budget enforcement
-
-### Zero Data Retention
-
-- Telemetry is span-based (token counts, latency, model, status) — no prompt or completion content stored
-- Privacy Mode enforced: usage metrics only
-
-### OpenTelemetry Observability
-
-- OTLP span ingestion at `/v1/traces`
-- Dashboard with spend, active users (30d), and span logs
-- Per-user and per-team activity profiles
-- Diff drilldowns via `tool.output.diff`
-- Vendor/service rollups (ToolProfile)
-
-### Team Collaboration & RBAC
-
-- `admin / manager / user` roles
-- Team-scoped API tokens
-- User and team management with profiles
-
-### Billing
-
-- Stripe Pay-as-you-go with metered usage (AI proxy cost, managed keys, telemetry events)
-- 14-day free trial, subscription lifecycle webhooks
-
-### Data Loss Prevention
-
-- Scans AI requests for sensitive patterns (credit cards, SSNs, government IDs)
-- Configurable action: block or flag
-
-## Architecture
-
-```
-[ Agent / App / Claude Code / IDE ]
-              │
-              ▼
-   Virtual Key Auth + Budget Check
-              │
-              ▼
-  Cloudflare AI Gateway (per-customer)
-              │
-         ┌────┴────┐
-         ▼         ▼
-      OpenAI    Anthropic  (Workers AI, ...)
-              │
-              ▼
-  Token Usage Extraction (SSE + JSON)
-              │
-         ┌────┴────────────┐
-         ▼                 ▼
-   GatewayEvent       Stripe Meter
-   (Postgres)         (gateway_events)
-              │
-              ▼
-   OTel Span → /v1/traces → Dashboard
-```
-
 ## Getting Started
 
 ### Prerequisites
@@ -150,6 +79,34 @@ You don't need archaic AI usage policies to protect your data. Give your team th
    ```
 
 API runs at `http://localhost:3000` · Web UI at `http://localhost:5173`
+
+## Architecture
+
+```
+[ Agent / App / Claude Code / IDE ]
+              │
+              ▼
+   Virtual Key Auth + Budget Check
+              │
+              ▼
+  Cloudflare AI Gateway (per-customer)
+              │
+         ┌────┴────┐
+         ▼         ▼
+      OpenAI    Anthropic  (Workers AI, ...)
+              │
+              ▼
+  Token Usage Extraction (SSE + JSON)
+              │
+         ┌────┴────────────┐
+         ▼                 ▼
+   GatewayEvent       Stripe Meter
+   (Postgres)         (gateway_events)
+              │
+              ▼
+   OTel Span → /v1/traces → Dashboard
+```
+
 
 ## Usage
 
@@ -230,6 +187,18 @@ stereos/
 ├── drizzle/                 # Migrations
 └── openapi.yaml             # OpenAPI 3.1 spec
 ```
+
+## Features
+
+| Area | Highlights |
+|------|------------|
+| AI Gateway | OpenAI-compatible proxy endpoints (`/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, …); Backed by Cloudflare AI Gateway (per-customer gateways with caching, rate limiting, logpush); Automatic provider routing inferred from model name |
+| Virtual Key Management | Scoped virtual keys (no direct provider key exposure); Per-key budgets with daily/weekly/monthly resets; Per-key model allowlists; Real-time spend tracking with automatic enforcement |
+| Zero Data Retention | Span-based telemetry only (token counts, latency, model, status) — no prompts or completions stored; Privacy Mode enforced |
+| OpenTelemetry Observability | OTLP span ingestion at `/v1/traces`; Dashboard for spend, 30d active users, and span logs; Per-user/team activity profiles; Diff drilldowns via `tool.output.diff`; Vendor/service rollups (ToolProfile) |
+| Team Collaboration & RBAC | Roles: `admin`, `manager`, `user`; Team-scoped API tokens; User and team management with profiles |
+| Billing | Stripe pay-as-you-go with metered usage (AI proxy cost, managed keys, telemetry events); 14-day free trial; Subscription lifecycle webhooks |
+| Data Loss Prevention | Scans AI requests for sensitive patterns (credit cards, SSNs, government IDs); Configurable action: block or flag |
 
 ## Built With
 
