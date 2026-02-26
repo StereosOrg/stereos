@@ -14,7 +14,7 @@ vi.mock('stripe', () => ({
   })),
 }));
 
-import { trackAiProxyUsage, STRIPE_METER_EVENT_AI_PROXY_USAGE } from '../stripe.js';
+import { trackAiProxyUsage, STRIPE_METER_EVENT_GATEWAY_EVENTS } from '../stripe.js';
 
 function makeDb(stripeId: string | null) {
   return {
@@ -33,27 +33,27 @@ describe('trackAiProxyUsage', () => {
     vi.clearAllMocks();
   });
 
-  it('reports microdollars to the ai_proxy_usage meter', async () => {
+  it('reports microdollars to the gateway_events meter with 20% markup', async () => {
     const db = makeDb('cus_test123');
     await trackAiProxyUsage(db, 'customer-uuid', 0.05, 'sk_test_key');
 
     const create = mockMeterEventCreate;
     expect(create).toHaveBeenCalledOnce();
     const call = create.mock.calls[0][0];
-    expect(call.event_name).toBe(STRIPE_METER_EVENT_AI_PROXY_USAGE);
-    // $0.05 → 50,000 microdollars
-    expect(call.payload.value).toBe('50000');
+    expect(call.event_name).toBe(STRIPE_METER_EVENT_GATEWAY_EVENTS);
+    // $0.05 * 1.2 → 60,000 microdollars
+    expect(call.payload.value).toBe('60000');
     expect(call.payload.stripe_customer_id).toBe('cus_test123');
   });
 
-  it('converts sub-cent costs accurately to microdollars', async () => {
+  it('converts sub-cent costs accurately to microdollars with 20% markup', async () => {
     const db = makeDb('cus_test456');
-    // $0.000030 → 30 microdollars
+    // $0.000030 * 1.2 → 36 microdollars
     await trackAiProxyUsage(db, 'customer-uuid', 0.00003, 'sk_test_key');
 
     const create = mockMeterEventCreate;
     expect(create).toHaveBeenCalledOnce();
-    expect(create.mock.calls[0][0].payload.value).toBe('30');
+    expect(create.mock.calls[0][0].payload.value).toBe('36');
   });
 
   it('does not report when costUsd is 0', async () => {
@@ -88,9 +88,9 @@ describe('trackAiProxyUsage', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('rounds fractional microdollars to nearest integer', async () => {
+  it('rounds fractional microdollars to nearest integer after markup', async () => {
     const db = makeDb('cus_test789');
-    // $0.0000015 → 1.5 microdollars → rounds to 2
+    // $0.0000015 * 1.2 → 1.8 microdollars → rounds to 2
     await trackAiProxyUsage(db, 'customer-uuid', 0.0000015, 'sk_test_key');
 
     const create = mockMeterEventCreate;

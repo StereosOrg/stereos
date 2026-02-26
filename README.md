@@ -1,22 +1,44 @@
 <p align="center">
-  <img src="./apps/web/public/gh-image.png" alt="Stereos — Private Organizational AI Gateway" width="100%" />
+  <a href="https://trystereos.com">
+    <img src="./apps/web/public/logo.svg" alt="Stereos" height="60" />
+  </a>
+
+  <h3 align="center">Stereos</h3>
+
+  <p align="center">
+    Private organizational AI gateway for engineering teams.
+    <br />
+    <a href="https://trystereos.com"><strong>Learn more »</strong></a>
+    <br />
+    <br />
+    <a href="https://join.slack.com/t/trystereos/shared_invite">Slack</a>
+    ·
+    <a href="https://trystereos.com">Website</a>
+    ·
+    <a href="https://github.com/your-org/stereos/issues">Issues</a>
+    ·
+    <a href="mailto:james@trystereos.com">Contact</a>
+  </p>
 </p>
 
 <p align="center">
-  <a href="https://join.slack.com/t/trystereos/shared_invite"><img src="https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white" alt="Slack" /></a>
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/OpenTelemetry-000000?style=for-the-badge&logo=opentelemetry&logoColor=white" alt="OpenTelemetry" />
-  <img src="https://img.shields.io/badge/Cloudflare%20AI%20Gateway-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Cloudflare AI Gateway" />
-  <img src="https://img.shields.io/badge/Zero%20Data%20Retention-009688?style=for-the-badge&logoColor=white" alt="Zero Data Retention" />
-  <a href="mailto:james@trystereos.com"><img src="https://img.shields.io/badge/james%40trystereos.com-6D4AFF?style=for-the-badge&logo=protonmail&logoColor=white" alt="Contact" /></a>
+  <a href="https://join.slack.com/t/trystereos/shared_invite"><img src="https://img.shields.io/endpoint?url=https://trystereos.com/slack-badge.json&style=flat-square" alt="Slack" /></a>
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/OpenTelemetry-000000?style=flat-square&logo=opentelemetry&logoColor=white" alt="OpenTelemetry" />
+  <img src="https://img.shields.io/badge/Cloudflare%20AI%20Gateway-F38020?style=flat-square&logo=cloudflareworkers&logoColor=white" alt="Cloudflare AI Gateway" />
+  <img src="https://img.shields.io/endpoint?url=https://trystereos.com/zero-data-retention-badge.json&style=flat-square" alt="Zero Data Retention" />
+  <a href="mailto:james@trystereos.com"><img src="https://img.shields.io/badge/james%40trystereos.com-6D4AFF?style=flat-square&logo=protonmail&logoColor=white" alt="Contact" /></a>
 </p>
 
-<h1 align="center">Stereos</h1>
-<p align="center"><strong>You don't need archaic AI usage policies to protect your data.</strong><br/>Give your team the freedom to innovate with the tools they love, while maintaining control and visibility over your organization's AI usage.</p>
+## About
 
----
+<img width="100%" src="./apps/web/public/gh-image.png" alt="Stereos — Private Organizational AI Gateway" />
+
+# Route all AI traffic through your own infrastructure.
 
 Stereos is a **private organizational AI gateway** built for engineering teams. Route all AI traffic through your own gateway with virtual key management, per-key budget controls, model allowlists, and full OpenTelemetry observability — without your prompts or completions ever leaving your infrastructure.
+
+You don't need archaic AI usage policies to protect your data. Give your team the freedom to use the tools they love, while maintaining full control and visibility over your organization's AI usage.
 
 ## Features
 
@@ -62,8 +84,6 @@ Stereos is a **private organizational AI gateway** built for engineering teams. 
 - Scans AI requests for sensitive patterns (credit cards, SSNs, government IDs)
 - Configurable action: block or flag
 
----
-
 ## Architecture
 
 ```
@@ -85,15 +105,13 @@ Stereos is a **private organizational AI gateway** built for engineering teams. 
          ┌────┴────────────┐
          ▼                 ▼
    GatewayEvent       Stripe Meter
-   (Postgres)         (ai_proxy_usage)
+   (Postgres)         (gateway_events)
               │
               ▼
    OTel Span → /v1/traces → Dashboard
 ```
 
----
-
-## Quick Start
+## Getting Started
 
 ### Prerequisites
 
@@ -102,29 +120,38 @@ Stereos is a **private organizational AI gateway** built for engineering teams. 
 - Stripe account
 - Cloudflare account (for AI Gateway provisioning)
 
-### Installation
+### Setup
 
-```bash
-git clone https://github.com/your-org/stereos
-cd stereos
-npm install
-cp .env.example .env
-# Fill in DATABASE_URL, STRIPE_SECRET_KEY, CF_ACCOUNT_ID, CF_AI_GATEWAY_API_TOKEN
-npm run db:migrate
-npm run dev
-```
+1. Clone the repo
 
-API: `http://localhost:3000` · Web UI: `http://localhost:5173`
+   ```sh
+   git clone https://github.com/your-org/stereos
+   cd stereos
+   ```
 
-### Testing
+2. Install dependencies
 
-```bash
-npm run test
-```
+   ```sh
+   npm install
+   ```
 
----
+3. Set up your `.env` file
 
-## AI Gateway Usage
+   ```sh
+   cp .env.example .env
+   # Fill in DATABASE_URL, STRIPE_SECRET_KEY, CF_ACCOUNT_ID, CF_AI_GATEWAY_API_TOKEN
+   ```
+
+4. Run migrations and start
+
+   ```sh
+   npm run db:migrate
+   npm run dev
+   ```
+
+API runs at `http://localhost:3000` · Web UI at `http://localhost:5173`
+
+## Usage
 
 Point any OpenAI-compatible client at Stereos and use a virtual key:
 
@@ -169,9 +196,7 @@ curl -X POST https://api.trystereos.com/v1/ai/keys/user \
   }'
 ```
 
----
-
-## OTel Ingestion
+### OTel Ingestion
 
 Send OTLP/JSON spans directly to Stereos:
 
@@ -183,10 +208,9 @@ curl -X POST https://api.trystereos.com/v1/traces \
 ```
 
 Or configure your OpenRouter Broadcast endpoint to push spans automatically:
+
 - **Endpoint:** `https://api.trystereos.com/v1/traces`
 - **Privacy Mode:** enabled (token usage, cost, timing — no prompts/completions)
-
----
 
 ## Project Structure
 
@@ -207,18 +231,16 @@ stereos/
 └── openapi.yaml             # OpenAPI 3.1 spec
 ```
 
-## Tech Stack
+## Built With
 
-| Layer | Technology |
-|-------|-----------|
-| API | [Hono](https://hono.dev), TypeScript, Node.js 20+ |
-| Database | PostgreSQL 14+, [Drizzle ORM](https://orm.drizzle.team) |
-| Auth | [Better Auth](https://www.better-auth.com) (Bearer token, no cookies) |
-| Frontend | React 19, React Router 7, TanStack Query, Vite |
-| Billing | [Stripe](https://stripe.com) (metered usage + subscriptions) |
-| Gateway | [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) |
-| Observability | [OpenTelemetry](https://opentelemetry.io) (OTLP/JSON) |
-| Email | [Resend](https://resend.com) |
+- [Hono](https://hono.dev) — API server
+- [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) — per-customer AI proxy
+- [React 19](https://react.dev) + [React Router 7](https://reactrouter.com) — frontend
+- [Drizzle ORM](https://orm.drizzle.team) + PostgreSQL — database
+- [Better Auth](https://www.better-auth.com) — authentication
+- [Stripe](https://stripe.com) — metered billing
+- [OpenTelemetry](https://opentelemetry.io) — observability
+- [Resend](https://resend.com) — email
 
 ## License
 

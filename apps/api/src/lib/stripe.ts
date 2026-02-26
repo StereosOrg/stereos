@@ -25,12 +25,12 @@ export const PRICE_ID_MANAGED_KEYS = env('STRIPE_PRICE_MANAGED_KEYS', 'price_1T0
 
 /** AI Proxy Usage: metered per microdollar of cost (with markup). Configure Stripe price with
  *  transform_quantity: { divide_by: 1_000_000, round: 'nearest' } and unit_amount: 100 ($1.00). */
-export const PRICE_ID_AI_PROXY_USAGE = env('STRIPE_PRICE_AI_PROXY_USAGE', '');
+export const PRICE_ID_GATEWAY_EVENTS = env('STRIPE_PRICE_GATEWAY_EVENTS', '');
 
 /** Stripe meter event names (must match meters in Stripe Dashboard) */
 export const STRIPE_METER_EVENT_TELEMETRY_EVENTS = env('STRIPE_METER_TELEMETRY_EVENTS', 'telemetry_events');
 export const STRIPE_METER_EVENT_MANAGED_KEYS = env('STRIPE_METER_MANAGED_KEYS', 'managed_keys');
-export const STRIPE_METER_EVENT_AI_PROXY_USAGE = env('STRIPE_METER_AI_PROXY_USAGE', 'ai_proxy_usage');
+export const STRIPE_METER_EVENT_GATEWAY_EVENTS = env('STRIPE_METER_GATEWAY_EVENTS', 'gateway_events');
 
 /** Get Stripe client. In Workers pass c.env.STRIPE_SECRET_KEY; in Node uses process.env. */
 export function getStripe(apiKey?: string): Stripe | null {
@@ -147,7 +147,7 @@ export async function trackManagedKeysUsage(
   }
 }
 
-/** Track AI proxy usage cost. Reports microdollars to the ai_proxy_usage Stripe meter.
+/** Track AI proxy usage cost. Reports microdollars to the gateway_events Stripe meter.
  *  The Stripe price must be configured with transform_quantity: { divide_by: 1_000_000 }
  *  and unit_amount: 100 ($1.00) so that reported microdollars map 1:1 to charged USD. */
 export async function trackAiProxyUsage(
@@ -157,7 +157,7 @@ export async function trackAiProxyUsage(
   stripeApiKey?: string
 ): Promise<void> {
   if (costUsd <= 0) return;
-  const microdollars = Math.round(costUsd * 1_000_000);
+  const microdollars = Math.round(costUsd * 1.2 * 1_000_000);
   if (microdollars <= 0) return;
 
   const idempotencyKey = `${customerId}-ai_proxy-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
@@ -168,7 +168,7 @@ export async function trackAiProxyUsage(
   });
   if (customer?.customer_stripe_id) {
     await createStripeMeterEvent(
-      STRIPE_METER_EVENT_AI_PROXY_USAGE,
+      STRIPE_METER_EVENT_GATEWAY_EVENTS,
       customer.customer_stripe_id,
       microdollars,
       new Date(),
@@ -201,7 +201,7 @@ export async function createEmbeddedCheckoutSession(
         { price: PRICE_ID_TELEMETRY_EVENTS },
         { price: PRICE_ID_MANAGED_KEYS },
         { price: PRICE_ID_FLAT_MONTHLY, quantity: 1 },
-        ...(PRICE_ID_AI_PROXY_USAGE ? [{ price: PRICE_ID_AI_PROXY_USAGE }] : []),
+        ...(PRICE_ID_GATEWAY_EVENTS ? [{ price: PRICE_ID_GATEWAY_EVENTS }] : []),
       ],
       subscription_data: {
         trial_period_days: 14,
