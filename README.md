@@ -34,7 +34,7 @@
 
 <img width="100%" src="./apps/web/public/gh-image.png" alt="Stereos — Private Organizational AI Gateway" />
 
-# Route all AI traffic through your own infrastructure.
+# Agentic engineering, unleashed
 
 Stereos is a **private organizational AI gateway** built for engineering teams. Route all AI traffic through your own gateway with virtual key management, per-key budget controls, model allowlists, and full OpenTelemetry observability — without your prompts or completions ever leaving your infrastructure.
 
