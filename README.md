@@ -6,7 +6,7 @@
   <h3 align="center">Stereos</h3>
 
   <p align="center">
-    Private organizational AI gateway for engineering teams.
+    Zero data retention (ZDR) enforced AI gateway for enterprise agentic engineering. 
     <br />
     <a href="https://trystereos.com"><strong>Learn more »</strong></a>
     <br />
