@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <a href="https://join.slack.com/t/trystereos/shared_invite"><img src="https://img.shields.io/badge/Slack-4A154B?style=flat&logo=slack&logoColor=white" alt="Slack" /></a>
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/OpenTelemetry-000000?style=flat&logo=opentelemetry&logoColor=white" alt="OpenTelemetry" />
-  <img src="https://img.shields.io/badge/Cloudflare%20AI%20Gateway-F38020?style=flat&logo=cloudflare&logoColor=white" alt="Cloudflare AI Gateway" />
-  <img src="https://img.shields.io/badge/Zero%20Data%20Retention-009688?style=flat&logoColor=white" alt="Zero Data Retention" />
-  <a href="mailto:james@trystereos.com"><img src="https://img.shields.io/badge/james%40trystereos.com-6D4AFF?style=flat&logo=protonmail&logoColor=white" alt="Contact" /></a>
+  <a href="https://join.slack.com/t/trystereos/shared_invite"><img src="https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white" alt="Slack" /></a>
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/OpenTelemetry-000000?style=for-the-badge&logo=opentelemetry&logoColor=white" alt="OpenTelemetry" />
+  <img src="https://img.shields.io/badge/Cloudflare%20AI%20Gateway-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Cloudflare AI Gateway" />
+  <img src="https://img.shields.io/badge/Zero%20Data%20Retention-009688?style=for-the-badge&logoColor=white" alt="Zero Data Retention" />
+  <a href="mailto:james@trystereos.com"><img src="https://img.shields.io/badge/james%40trystereos.com-6D4AFF?style=for-the-badge&logo=protonmail&logoColor=white" alt="Contact" /></a>
 </p>
 
 <h1 align="center">Stereos</h1>
@@ -20,40 +20,49 @@ Stereos is a **private organizational AI gateway** built for engineering teams. 
 
 ## Features
 
-**AI Gateway**
+### AI Gateway
+
 - OpenAI-compatible proxy endpoint (`/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, and more)
 - Backed by [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) — per-customer provisioned gateways with caching, rate limiting, and logpush
 - Automatic provider routing (OpenAI, Anthropic, Workers AI) inferred from model name
 
-**Virtual Key Management**
+### Virtual Key Management
+
 - Issue scoped virtual keys to users and teams — no direct provider key exposure
 - Per-key budget limits with daily / weekly / monthly reset cycles
 - Per-key model allowlists
 - Real-time spend tracking with automatic budget enforcement
 
-**Zero Data Retention**
+### Zero Data Retention
+
 - Telemetry is span-based (token counts, latency, model, status) — no prompt or completion content stored
 - Privacy Mode enforced: usage metrics only
 
-**OpenTelemetry Observability**
+### OpenTelemetry Observability
+
 - OTLP span ingestion at `/v1/traces`
 - Dashboard with spend, active users (30d), and span logs
 - Per-user and per-team activity profiles
 - Diff drilldowns via `tool.output.diff`
 - Vendor/service rollups (ToolProfile)
 
-**Team Collaboration & RBAC**
+### Team Collaboration & RBAC
+
 - `admin / manager / user` roles
 - Team-scoped API tokens
 - User and team management with profiles
 
-**Billing**
+### Billing
+
 - Stripe Pay-as-you-go with metered usage (AI proxy cost, managed keys, telemetry events)
 - 14-day free trial, subscription lifecycle webhooks
 
-**Data Loss Prevention**
+### Data Loss Prevention
+
 - Scans AI requests for sensitive patterns (credit cards, SSNs, government IDs)
 - Configurable action: block or flag
+
+---
 
 ## Architecture
 
@@ -81,6 +90,8 @@ Stereos is a **private organizational AI gateway** built for engineering teams. 
               ▼
    OTel Span → /v1/traces → Dashboard
 ```
+
+---
 
 ## Quick Start
 
@@ -110,6 +121,8 @@ API: `http://localhost:3000` · Web UI: `http://localhost:5173`
 ```bash
 npm run test
 ```
+
+---
 
 ## AI Gateway Usage
 
@@ -156,6 +169,8 @@ curl -X POST https://api.trystereos.com/v1/ai/keys/user \
   }'
 ```
 
+---
+
 ## OTel Ingestion
 
 Send OTLP/JSON spans directly to Stereos:
@@ -170,6 +185,8 @@ curl -X POST https://api.trystereos.com/v1/traces \
 Or configure your OpenRouter Broadcast endpoint to push spans automatically:
 - **Endpoint:** `https://api.trystereos.com/v1/traces`
 - **Privacy Mode:** enabled (token usage, cost, timing — no prompts/completions)
+
+---
 
 ## Project Structure
 
