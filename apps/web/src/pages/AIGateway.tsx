@@ -186,7 +186,7 @@ function KiloMockPanel({ toolStep, typedText, proxyUrl }: KiloMockPanelProps) {
 
   const cursor = <span className="kilo-cursor">|</span>;
 
-  const val = (field: string, full: string, placeholder: string) => {
+  const val = (field: string, placeholder: string) => {
     const v = displayValue(field);
     return v
       ? <>{v}{isActive(field) && cursor}</>
@@ -208,23 +208,23 @@ function KiloMockPanel({ toolStep, typedText, proxyUrl }: KiloMockPanelProps) {
 
         <div style={label}>API Provider</div>
         <div style={mockField('provider')}>
-          {val('provider', 'OpenAI Compatible', 'Select provider...')}
+          {val('provider', 'Select provider...')}
           {displayValue('provider') && !isActive('provider') && <span style={{ marginLeft: 'auto', color: '#888' }}> ▾</span>}
         </div>
 
         <div style={label}>Base URL</div>
         <div style={mockField('baseUrl')}>
-          {val('baseUrl', proxyUrl, 'https://...')}
+          {val('baseUrl', 'https://...')}
         </div>
 
         <div style={label}>API Key</div>
         <div style={mockField('apiKey')}>
-          {val('apiKey', 'vk_••••••••••••', 'Enter key...')}
+          {val('apiKey', 'Enter key...')}
         </div>
 
         <div style={label}>Model</div>
         <div style={mockField('model')}>
-          {val('model', 'openai/gpt-4o', 'Select model...')}
+          {val('model', 'Select model...')}
           {displayValue('model') && !isActive('model') && <span style={{ marginLeft: 'auto', color: '#888' }}> ▾</span>}
         </div>
 
