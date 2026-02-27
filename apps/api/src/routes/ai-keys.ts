@@ -491,8 +491,8 @@ router.get('/ai/models', requireAuth, async (c) => {
   return c.json({ models: SUPPORTED_MODELS });
 });
 
-// GET /v1/ai/gateway - Get gateway info for the customer
-router.get('/ai/gateway', requireAuth, requireAdminOrManager, async (c) => {
+// GET /v1/ai/gateway - Get gateway info for the customer (all authenticated users)
+router.get('/ai/gateway', requireAuth, async (c) => {
   const user = c.get('user')!;
   const customer = await getCustomerForUser(c as any, user.id);
 
