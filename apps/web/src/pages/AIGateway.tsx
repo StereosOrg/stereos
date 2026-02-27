@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { Cloud, CheckCircle, AlertCircle, Copy, Check, ChevronDown } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 
 const DEFAULT_OTEL_URL = `${API_BASE}/v1/traces`;
 
@@ -315,76 +316,89 @@ export function AIGateway() {
         {/* Example Requests - spans full width */}
         {isProvisioned && (
           <div style={{ ...cardStyle, gridColumn: '1 / -1' }}>
-            {/* Inline selector row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
-              <span style={{ fontSize: '15px', fontWeight: 600 }}>Make a request to</span>
+            <Tabs defaultValue="api">
+              <TabsList className="settings-subtabs-list" style={{ marginBottom: '20px' }}>
+                <TabsTrigger value="api" className="settings-subtabs-trigger">API</TabsTrigger>
+                <TabsTrigger value="tool-connection" className="settings-subtabs-trigger">Tool Connection</TabsTrigger>
+              </TabsList>
 
-              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                <img
-                  src={provider === 'openai' ? OPENAI_LOGO : ANTHROPIC_LOGO}
-                  alt=""
-                  style={{ position: 'absolute', left: '10px', width: '16px', height: '16px', borderRadius: '3px', objectFit: 'contain', pointerEvents: 'none' }}
-                />
-                <select
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value as Provider)}
-                  style={{ ...inlineSelectStyle, paddingLeft: '32px' }}
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic</option>
-                </select>
-                <ChevronDown size={14} style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: '#666' }} />
-              </div>
+              <TabsContent value="api" style={{ marginTop: 0 }}>
+                {/* Inline selector row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                  <span style={{ fontSize: '15px', fontWeight: 600 }}>Make a request to</span>
 
-              <span style={{ fontSize: '15px', fontWeight: 600 }}>using</span>
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    <img
+                      src={provider === 'openai' ? OPENAI_LOGO : ANTHROPIC_LOGO}
+                      alt=""
+                      style={{ position: 'absolute', left: '10px', width: '16px', height: '16px', borderRadius: '3px', objectFit: 'contain', pointerEvents: 'none' }}
+                    />
+                    <select
+                      value={provider}
+                      onChange={(e) => setProvider(e.target.value as Provider)}
+                      style={{ ...inlineSelectStyle, paddingLeft: '32px' }}
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                    </select>
+                    <ChevronDown size={14} style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: '#666' }} />
+                  </div>
 
-              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                <select
-                  value={sdk}
-                  onChange={(e) => setSdk(e.target.value as SdkType)}
-                  style={inlineSelectStyle}
-                >
-                  <option value="vercel">Vercel AI SDK</option>
-                  <option value="js">OpenAI-compatible JS SDK</option>
-                  <option value="python">OpenAI-compatible Python SDK</option>
-                  <option value="curl">cURL</option>
-                </select>
-                <ChevronDown size={14} style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: '#666' }} />
-              </div>
-            </div>
-            <p style={{ margin: '-6px 0 16px', fontSize: '13px', color: '#666' }}>
-              Use your virtual key as the SDK `apiKey` (or `Authorization: Bearer`). Provider keys are not required when Unified Billing is enabled.
-            </p>
+                  <span style={{ fontSize: '15px', fontWeight: 600 }}>using</span>
 
-            {/* Code block */}
-            <div style={{ position: 'relative' }}>
-              <pre
-                style={{
-                  background: '#1a1a2e',
-                  color: '#e0e0e0',
-                  padding: '24px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  lineHeight: 1.7,
-                  overflow: 'auto',
-                  margin: 0,
-                }}
-              >
-                {snippet}
-              </pre>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(snippet);
-                  setCopiedSnippet(true);
-                  setTimeout(() => setCopiedSnippet(false), 2000);
-                }}
-                title="Copy snippet"
-                style={{ position: 'absolute', top: '12px', right: '12px', padding: '6px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '4px', cursor: 'pointer', color: copiedSnippet ? '#16a34a' : '#999' }}
-              >
-                {copiedSnippet ? <Check size={14} /> : <Copy size={14} />}
-              </button>
-            </div>
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    <select
+                      value={sdk}
+                      onChange={(e) => setSdk(e.target.value as SdkType)}
+                      style={inlineSelectStyle}
+                    >
+                      <option value="vercel">Vercel AI SDK</option>
+                      <option value="js">OpenAI-compatible JS SDK</option>
+                      <option value="python">OpenAI-compatible Python SDK</option>
+                      <option value="curl">cURL</option>
+                    </select>
+                    <ChevronDown size={14} style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: '#666' }} />
+                  </div>
+                </div>
+                <p style={{ margin: '-6px 0 16px', fontSize: '13px', color: '#666' }}>
+                  Use your virtual key as the SDK `apiKey` (or `Authorization: Bearer`). Provider keys are not required when Unified Billing is enabled.
+                </p>
+
+                {/* Code block */}
+                <div style={{ position: 'relative' }}>
+                  <pre
+                    style={{
+                      background: '#1a1a2e',
+                      color: '#e0e0e0',
+                      padding: '24px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      lineHeight: 1.7,
+                      overflow: 'auto',
+                      margin: 0,
+                    }}
+                  >
+                    {snippet}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(snippet);
+                      setCopiedSnippet(true);
+                      setTimeout(() => setCopiedSnippet(false), 2000);
+                    }}
+                    title="Copy snippet"
+                    style={{ position: 'absolute', top: '12px', right: '12px', padding: '6px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '4px', cursor: 'pointer', color: copiedSnippet ? '#16a34a' : '#999' }}
+                  >
+                    {copiedSnippet ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="tool-connection" style={{ marginTop: 0 }}>
+                <p>Coming soon</p>
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </div>
