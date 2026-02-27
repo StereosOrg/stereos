@@ -577,7 +577,78 @@ export function AIGateway() {
               </TabsContent>
 
               <TabsContent value="tool-connection" style={{ marginTop: 0 }}>
-                <p>Coming soon</p>
+                {/* Tool selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#555' }}>Connect with:</span>
+
+                  {/* Kilo Code — active */}
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 14px', borderRadius: '8px',
+                    border: '2px solid #e8d000', background: '#fefce8',
+                    fontWeight: 700, fontSize: '13px', color: '#1a1a2e',
+                  }}>
+                    <KiloCodeLogo />
+                    Kilo Code
+                  </div>
+
+                  {/* Coming soon tools */}
+                  {['OpenCode', 'Cursor', 'Continue'].map(name => (
+                    <span key={name} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      padding: '8px 14px', borderRadius: '8px',
+                      border: '1px dashed #ccc', color: '#bbb',
+                      fontSize: '13px', fontWeight: 600,
+                    }}>
+                      {name}
+                      <span style={{ fontSize: '10px', background: '#f0f0f0', borderRadius: '4px', padding: '1px 5px', color: '#aaa' }}>
+                        soon
+                      </span>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Two-column layout */}
+                <div className="kilo-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '32px', alignItems: 'start' }}>
+                  {/* Left: step list */}
+                  <div>
+                    <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 16px' }}>
+                      Setup Instructions
+                    </h3>
+                    <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {KILO_STEPS.map((step, i) => {
+                        const isActiveStep = toolStep === i;
+                        const isDone = toolStep > i;
+                        return (
+                          <li key={i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', opacity: isDone ? 0.4 : 1, transition: 'opacity 0.3s ease' }}>
+                            <span style={{
+                              flexShrink: 0, width: '22px', height: '22px', borderRadius: '50%',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '11px', fontWeight: 700,
+                              background: isActiveStep ? '#1a1a2e' : isDone ? '#d1fae5' : '#f0f0f0',
+                              color: isActiveStep ? '#fff' : isDone ? '#16a34a' : '#888',
+                              transition: 'all 0.3s ease',
+                            }}>
+                              {isDone ? '✓' : i + 1}
+                            </span>
+                            <span style={{
+                              fontSize: '13px', lineHeight: 1.5,
+                              fontWeight: isActiveStep ? 600 : 400,
+                              color: isActiveStep ? '#111' : '#555',
+                              transition: 'all 0.3s ease',
+                              paddingTop: '3px',
+                            }}>
+                              {step.label}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </div>
+
+                  {/* Right: animated mock panel */}
+                  <KiloMockPanel toolStep={toolStep} typedText={typedText} proxyUrl={proxyUrl} />
+                </div>
               </TabsContent>
             </Tabs>
           </div>
