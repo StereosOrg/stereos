@@ -438,4 +438,22 @@ body {
   .heading-1 {
     font-size: 32px;
   }
+
+  .kilo-two-col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Kilo Code mock panel — blinking cursor */
+@keyframes kilo-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.kilo-cursor {
+  display: inline-block;
+  animation: kilo-blink 0.8s ease-in-out infinite;
+  color: #e8d000;
+  margin-left: 1px;
+  font-weight: 400;
 }
