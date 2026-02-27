@@ -70,7 +70,7 @@ export function createAuth(db: Database, envOverrides?: AuthEnv) {
       magicLink({
         sendMagicLink: sendMagicLinkFn,
         expiresIn: 86400, // 24 hours
-        disableSignUp: false, // create user if they don't exist when they use the magic link
+        disableSignUp: true, // sales-led: only pre-created users can sign in
       }),
     ],
     database: drizzleAdapter(db, {
