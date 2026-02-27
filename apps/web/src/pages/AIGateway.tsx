@@ -114,6 +114,15 @@ print(data.get("choices", [{}])[0].get("message", {}).get("content"))`;
 }'`;
 }
 
+const KILO_STEPS: { label: string; field: string }[] = [
+  { label: 'Open Kilo Code → click the Settings icon', field: 'panel' },
+  { label: 'Set API Provider to OpenAI Compatible', field: 'provider' },
+  { label: 'Paste your gateway URL into Base URL', field: 'baseUrl' },
+  { label: 'Paste your virtual key into API Key', field: 'apiKey' },
+  { label: 'Set Model (e.g. openai/gpt-4o)', field: 'model' },
+  { label: 'Add Custom Header: Content-Type: application/json', field: 'headers' },
+];
+
 export function AIGateway() {
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
@@ -123,6 +132,9 @@ export function AIGateway() {
   const [provider, setProvider] = useState<Provider>('openai');
   const [sdk, setSdk] = useState<SdkType>('vercel');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [toolStep, setToolStep] = useState(0);
+  const [typedText, setTypedText] = useState('');
+  const typingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data, isLoading } = useQuery<GatewayData>({
     queryKey: ['ai-gateway'],
@@ -192,6 +204,35 @@ export function AIGateway() {
     }
   };
 
+  const proxyUrl = data?.proxy_url || data?.inference_url || `${API_BASE}/v1`;
+  const stepValues = useMemo(
+    () => ['', 'OpenAI Compatible', proxyUrl, 'vk_••••••••••••', 'openai/gpt-4o', 'application/json'],
+    [proxyUrl],
+  );
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setToolStep(s => (s + 1) % KILO_STEPS.length);
+      setTypedText('');
+    }, 2800);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (typingRef.current) clearInterval(typingRef.current);
+    const value = stepValues[toolStep];
+    if (!value) return;
+    let i = 0;
+    typingRef.current = setInterval(() => {
+      i++;
+      setTypedText(value.slice(0, i));
+      if (i >= value.length && typingRef.current) clearInterval(typingRef.current);
+    }, 35);
+    return () => {
+      if (typingRef.current) clearInterval(typingRef.current);
+    };
+  }, [toolStep, stepValues]);
+
   if (isLoading) {
     return (
       <div style={{ padding: '48px' }}>
@@ -200,7 +241,6 @@ export function AIGateway() {
     );
   }
 
-  const proxyUrl = data?.proxy_url || data?.inference_url || `${API_BASE}/v1`;
   const snippet = isProvisioned
     ? buildSnippet(provider, sdk, proxyUrl)
     : '';
