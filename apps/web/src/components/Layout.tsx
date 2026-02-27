@@ -33,12 +33,12 @@ export function Layout() {
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
     ...(isAdminOrManager ? [{ path: '/keys', label: 'Keys', icon: Key }] : []),
-    ...(isAdminOrManager ? [{ path: '/ai-gateway', label: 'AI Gateway', icon: Cloud }] : []),
+    { path: '/ai-gateway', label: 'AI Gateway', icon: Cloud },
     ...(isAdminOrManager ? [{ path: '/dlp', label: 'DLP', icon: Shield }] : []),
     ...(isAdminOrManager ? [{ path: '/teams', label: 'Teams', icon: UsersRound }] : []),
-    { path: '/users', label: 'Users', icon: Users },
+    { path: '/users', label: isAdminOrManager ? 'Users' : 'Team', icon: Users },
     { path: '/settings', label: 'Settings', icon: Settings },
-    { path: '/billing', label: 'Billing', icon: CreditCard },
+    ...(isAdminOrManager ? [{ path: '/billing', label: 'Billing', icon: CreditCard }] : []),
   ];
 
   return (

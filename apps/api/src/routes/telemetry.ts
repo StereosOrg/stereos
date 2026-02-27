@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { toolProfiles, telemetrySpans, telemetryMetrics, users } from '@stereos/shared/schema';
+import { toolProfiles, telemetrySpans, telemetryMetrics, users, gatewayEvents } from '@stereos/shared/schema';
 import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
 import { authMiddleware, sessionOrTokenAuth } from '../lib/api-token.js';
 import { getCurrentUser } from '../lib/middleware.js';
@@ -310,6 +310,34 @@ router.get('/dashboard', sessionOrTokenAuth, async (c) => {
     recent_spans: recent,
     most_active_user: mostActiveUser,
   });
+});
+
+// GET /v1/gateway-events/me - Recent gateway events for the current user
+router.get('/gateway-events/me', sessionOrTokenAuth, async (c) => {
+  const apiToken = c.get('apiToken') as ApiTokenPayload;
+  const db = c.get('db');
+  const userId = apiToken.user_id;
+
+  if (!userId) return c.json({ events: [] });
+
+  const events = await db.query.gatewayEvents.findMany({
+    where: eq(gatewayEvents.user_id, userId),
+    orderBy: desc(gatewayEvents.created_at),
+    limit: 20,
+    columns: {
+      id: true,
+      model: true,
+      provider: true,
+      prompt_tokens: true,
+      completion_tokens: true,
+      total_tokens: true,
+      status_code: true,
+      duration_ms: true,
+      created_at: true,
+    },
+  });
+
+  return c.json({ events });
 });
 
 // ── Read: Custom Metrics ────────────────────────────────────────────────

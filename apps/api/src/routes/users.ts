@@ -129,12 +129,19 @@ router.get('/users/:userId/profile', requireAuth, async (c) => {
     
     // Get usage statistics from spans
     const usageStats = await db.execute(sql`
-      SELECT 
+      SELECT
         COUNT(*) as total_events,
         COUNT(DISTINCT DATE_TRUNC('day', start_time)) as active_days,
         MIN(start_time) as first_activity,
         MAX(start_time) as last_activity
       FROM "TelemetrySpan"
+      WHERE user_id = ${userId}
+    `);
+
+    // Get token usage from gateway events for this user
+    const tokenUsageResult = await db.execute(sql`
+      SELECT COALESCE(SUM(total_tokens), 0) as token_usage
+      FROM "GatewayEvent"
       WHERE user_id = ${userId}
     `);
     
@@ -185,6 +192,7 @@ router.get('/users/:userId/profile', requireAuth, async (c) => {
     
     const usageRows = sqlRows(usageStats);
     const monthlyRows = sqlRows(monthlyStats);
+    const tokenUsageRows = sqlRows(tokenUsageResult);
 
     // Favorite tool: derive from most-used vendor in recent spans
     let favoriteTool: string | null = null;
@@ -246,6 +254,7 @@ router.get('/users/:userId/profile', requireAuth, async (c) => {
             last_activity: null,
           }),
           favorite_tool: favoriteTool,
+          token_usage: Number((tokenUsageRows[0] as Record<string, unknown>)?.token_usage ?? 0),
         },
         monthly: monthlyRows,
         files: [],
@@ -459,14 +468,22 @@ router.get('/me', requireAuth, async (c) => {
     
     // Get basic usage stats from spans
     const usageStats = await db.execute(sql`
-      SELECT 
+      SELECT
         COUNT(*) as total_events,
         COUNT(DISTINCT DATE_TRUNC('day', start_time)) as active_days,
         MAX(start_time) as last_activity
       FROM "TelemetrySpan"
       WHERE user_id = ${currentUser.id}
     `);
-    
+
+    // Get team membership
+    const teamMembership = await db
+      .select({ team_id: teamMembers.team_id, team_name: teams.name })
+      .from(teamMembers)
+      .leftJoin(teams, eq(teamMembers.team_id, teams.id))
+      .where(eq(teamMembers.user_id, currentUser.id))
+      .limit(1);
+
     const meUsageRows = sqlRows(usageStats);
     return c.json({
       user: user ?? null,
@@ -475,11 +492,51 @@ router.get('/me', requireAuth, async (c) => {
         active_days: 0,
         last_activity: null,
       },
+      team: teamMembership[0] ?? null,
     });
   } catch (error) {
     console.error('Error fetching user profile:', error);
     return c.json({ error: 'Failed to fetch user profile' }, 500);
   }
+});
+
+// GET /v1/me/team-members - Get members of current user's team (any authenticated user)
+router.get('/me/team-members', requireAuth, async (c) => {
+  const currentUser = c.get('user')!;
+  const db = c.get('db');
+
+  // Find the team the current user belongs to
+  const membership = await db
+    .select({ team_id: teamMembers.team_id })
+    .from(teamMembers)
+    .where(eq(teamMembers.user_id, currentUser.id))
+    .limit(1);
+
+  if (!membership[0]) {
+    return c.json({ users: [], team: null });
+  }
+
+  const teamId = membership[0].team_id;
+
+  const team = await db.query.teams.findFirst({
+    where: and(eq(teams.id, teamId), isNull(teams.archived_at)),
+    columns: { id: true, name: true },
+  });
+
+  const members = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      role: users.role,
+      createdAt: users.createdAt,
+      image: users.image,
+    })
+    .from(teamMembers)
+    .innerJoin(users, eq(teamMembers.user_id, users.id))
+    .where(eq(teamMembers.team_id, teamId));
+
+  return c.json({ users: members, team });
 });
 
 export default router;

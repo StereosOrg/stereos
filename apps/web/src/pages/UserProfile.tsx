@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE, getAuthHeaders } from '../lib/api';
 import { ToolIcon, toolDisplayName, VendorIcon, getVendorBrand } from '../components/ToolIcon';
-import { Key, Plus } from 'lucide-react';
 
 interface UserProfile {
   profile: {
@@ -28,6 +27,7 @@ interface UserProfile {
       first_activity: string | null;
       last_activity: string | null;
       favorite_tool: string | null;
+      token_usage: number;
     };
     monthly: Array<{
       month: string;
@@ -74,19 +74,7 @@ interface UserProfile {
 export function UserProfile() {
   const { userId } = useParams<{ userId: string }>();
   const [error] = useState<string | null>(null);
-  const [keyName, setKeyName] = useState('');
-  const [creatingKey, setCreatingKey] = useState(false);
-  const [createKeyError, setCreateKeyError] = useState('');
-  const [createdKeyRaw, setCreatedKeyRaw] = useState<string | null>(null);
-
-  const { data: meData } = useQuery<{ user: { id: string; role?: string } }>({
-    queryKey: ['me'],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() });
-      if (!res.ok) throw new Error('Not authenticated');
-      return res.json();
-    },
-  });
+  const [userCost, setUserCost] = useState<number | null>(null);
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
     queryKey: ['user-profile', userId],
@@ -238,75 +226,6 @@ export function UserProfile() {
         </div>
       </div>
 
-      {/* Provision OpenRouter key (managers viewing another user) */}
-      {meData?.user && userId && userId !== meData.user.id && (meData.user.role === 'admin' || meData.user.role === 'manager') && userData.customer && (
-        <div className="card" style={{ marginBottom: '24px' }}>
-          <h2 className="heading-3" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Key size={20} />
-            Provision OpenRouter key
-          </h2>
-          <p style={{ color: '#555', fontSize: '15px', marginBottom: '16px' }}>
-            Create an OpenRouter key for this user. They will see it in Settings.
-          </p>
-          {createdKeyRaw && (
-            <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-mint)', border: '1px solid var(--border-default)', borderRadius: '8px' }}>
-              <p style={{ fontWeight: 600, marginBottom: '8px' }}>Key created — copy and share it with the user. It won't be shown again.</p>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <code style={{ flex: '1 1 200px', wordBreak: 'break-all', fontSize: '13px' }}>{createdKeyRaw}</code>
-                <button type="button" className="btn" onClick={() => { navigator.clipboard.writeText(createdKeyRaw); }}>Copy</button>
-                <button type="button" className="btn" onClick={() => setCreatedKeyRaw(null)}>Dismiss</button>
-              </div>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              className="input"
-              type="text"
-              value={keyName}
-              onChange={(e) => setKeyName(e.target.value)}
-              placeholder="Key name (e.g. Cursor, CLI)"
-              disabled={creatingKey}
-              style={{ flex: '1 1 200px', minWidth: '180px' }}
-            />
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={creatingKey || !keyName.trim()}
-              onClick={async () => {
-                if (!keyName.trim() || !userData.customer) return;
-                setCreatingKey(true);
-                setCreateKeyError('');
-                setCreatedKeyRaw(null);
-                try {
-                  const res = await fetch(`${API_BASE}/v1/keys/user`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                      name: keyName.trim(),
-                      customer_id: userData.customer.id,
-                      user_id: userId,
-                    }),
-                  });
-                  const data = await res.json();
-                  if (!res.ok) throw new Error(data.error || 'Failed to create key');
-                  setCreatedKeyRaw(data.key ?? null);
-                  setKeyName('');
-                } catch (e) {
-                  setCreateKeyError(e instanceof Error ? e.message : 'Failed to create key');
-                } finally {
-                  setCreatingKey(false);
-                }
-              }}
-            >
-              <Plus size={18} />
-              {creatingKey ? 'Creating…' : 'Create key'}
-            </button>
-          </div>
-          {createKeyError && <p style={{ color: '#dc2626', fontWeight: 600, marginTop: '12px' }}>{createKeyError}</p>}
-        </div>
-      )}
-
       {/* Stats Grid */}
       <div
         style={{
@@ -317,13 +236,13 @@ export function UserProfile() {
         }}
       >
         <StatCard
-          label="Total events"
-          value={parseInt(usage.stats.total_events || '0').toLocaleString()}
+          label="Token usage"
+          value={(usage.stats.token_usage ?? 0).toLocaleString()}
           variant="white"
         />
         <StatCard
-          label="Active days"
-          value={parseInt(usage.stats.active_days || '0').toLocaleString()}
+          label="User cost"
+          value={userCost !== null ? `$${userCost.toFixed(2)}` : '—'}
           variant="white"
         />
         <div className="card" style={{ padding: '16px 20px', background: 'var(--bg-white)' }}>
@@ -433,11 +352,10 @@ export function UserProfile() {
           </div>
         </div>
 
-        {/* Right column: API Keys (includes OpenRouter monthly usage) */}
+        {/* Right column: API Keys */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* API Keys (user + team scoped, with OpenRouter usage) */}
           {userId && (
-            <UserKeysSection userId={userId} />
+            <UserKeysSection userId={userId} onSpendLoaded={setUserCost} />
           )}
         </div>
       </div>
@@ -459,7 +377,7 @@ interface AiKeyItem {
   created_at: string;
 }
 
-function UserKeysSection({ userId }: { userId: string }) {
+function UserKeysSection({ userId, onSpendLoaded }: { userId: string; onSpendLoaded?: (spend: number) => void }) {
   const { data, isLoading, error } = useQuery<{ keys: AiKeyItem[] }>({
     queryKey: ['user-keys', userId],
     queryFn: async () => {
@@ -476,6 +394,12 @@ function UserKeysSection({ userId }: { userId: string }) {
   const keys = data?.keys ?? [];
   const hasKeys = keys.length > 0;
   const totalSpend = keys.reduce((sum, k) => sum + parseFloat(String(k.spend_usd ?? '0')), 0);
+
+  useEffect(() => {
+    if (data && onSpendLoaded) {
+      onSpendLoaded(totalSpend);
+    }
+  }, [data, totalSpend, onSpendLoaded]);
 
   if (isLoading) {
     return (

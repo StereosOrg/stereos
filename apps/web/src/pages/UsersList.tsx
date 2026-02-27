@@ -21,6 +21,104 @@ interface Team {
   profile_pic: string | null;
 }
 
+function UserRow({ user, isAdmin, teams, updateUserRole, updateUserTeam }: {
+  user: User;
+  isAdmin: boolean;
+  teams?: Team[];
+  updateUserRole?: (id: string, role: string) => void;
+  updateUserTeam?: (id: string, teamId: string | null) => void;
+}) {
+  return (
+    <tr
+      style={{
+        borderBottom: 'var(--border-width) solid var(--border-color)',
+        background: 'var(--bg-white)',
+      }}
+    >
+      <td style={{ padding: '16px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              background: user.image ? 'transparent' : 'var(--dark)',
+              border: '1px solid var(--border-default)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '18px',
+              fontWeight: 700,
+              color: 'white',
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}
+          >
+            {user.image ? (
+              <img src={user.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              user.name?.charAt(0) || user.email.charAt(0).toUpperCase()
+            )}
+          </div>
+          <div>
+            <p style={{ fontWeight: 600, margin: 0 }}>{user.name || 'Unnamed User'}</p>
+            <p style={{ fontSize: '14px', color: '#555', margin: '2px 0 0' }}>{user.email}</p>
+          </div>
+        </div>
+      </td>
+      <td style={{ padding: '16px 24px' }}>
+        {isAdmin ? (
+          <select
+            className="input"
+            value={user.role}
+            onChange={(e) => updateUserRole?.(user.id, e.target.value)}
+            style={{ maxWidth: '160px' }}
+          >
+            <option value="admin">admin</option>
+            <option value="manager">manager</option>
+            <option value="user">user</option>
+          </select>
+        ) : (
+          <span className="badge" style={{ background: 'var(--bg-lavender)', color: 'var(--dark)' }}>
+            {user.role}
+          </span>
+        )}
+      </td>
+      {isAdmin && (
+        <td style={{ padding: '16px 24px' }}>
+          <select
+            className="input"
+            value={user.team_id ?? ''}
+            onChange={(e) => updateUserTeam?.(user.id, e.target.value || null)}
+            style={{ maxWidth: '200px' }}
+          >
+            <option value="">Unassigned</option>
+            {(teams ?? []).map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </td>
+      )}
+      <td style={{ padding: '16px 24px', color: '#555' }}>
+        {new Date(user.createdAt).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })}
+      </td>
+      <td style={{ padding: '16px 24px', textAlign: 'right' }}>
+        <Link
+          to={`/users/${user.id}`}
+          className="btn btn-primary"
+          style={{ padding: '8px 16px', fontSize: '14px', textDecoration: 'none' }}
+        >
+          View profile
+        </Link>
+      </td>
+    </tr>
+  );
+}
+
 export function UsersList() {
   const queryClient = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
@@ -29,21 +127,43 @@ export function UsersList() {
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState(false);
 
-  const { data: users, isLoading, error } = useQuery<{ users: User[] }>({
+  const { data: meData } = useQuery<{ user: { id: string; role?: string } }>({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/me`, { credentials: 'include', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Not authenticated');
+      return res.json();
+    },
+  });
+
+  const isAdminOrManager = meData?.user?.role === 'admin' || meData?.user?.role === 'manager';
+
+  // Admin/manager view: all users
+  const { data: users, isLoading: usersLoading, error: usersError } = useQuery<{ users: User[] }>({
     queryKey: ['users'],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/v1/users`, {
         credentials: 'include',
         headers: getAuthHeaders(),
       });
-      if (!response.ok) {
-        if (response.status === 403) {
-          throw new Error('Admin access required');
-        }
-        throw new Error('Failed to fetch users');
-      }
+      if (!response.ok) throw new Error('Failed to fetch users');
       return response.json();
     },
+    enabled: isAdminOrManager,
+  });
+
+  // Non-admin view: team members only
+  const { data: teamData, isLoading: teamLoading } = useQuery<{ users: User[]; team: { id: string; name: string } | null }>({
+    queryKey: ['my-team-members'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/v1/me/team-members`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error('Failed to fetch team');
+      return response.json();
+    },
+    enabled: !isAdminOrManager,
   });
 
   const { data: teams } = useQuery<{ teams: Team[] }>({
@@ -56,10 +176,12 @@ export function UsersList() {
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
-    enabled: !error,
+    enabled: isAdminOrManager,
   });
 
-  if (isLoading) {
+  const isLoading = isAdminOrManager ? usersLoading : teamLoading;
+
+  if (isLoading || !meData) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '48px' }}>
         <div
@@ -73,28 +195,20 @@ export function UsersList() {
             margin: '0 auto 16px',
           }}
         />
-        <p style={{ color: '#555' }}>Loading users…</p>
+        <p style={{ color: '#555' }}>{isAdminOrManager ? 'Loading users…' : 'Loading team…'}</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
-  if (error) {
+  if (isAdminOrManager && usersError) {
     return (
       <div
         className="card"
-        style={{
-          background: 'var(--bg-pink)',
-          border: '1px solid #dc2626',
-          padding: '24px',
-        }}
+        style={{ background: 'var(--bg-pink)', border: '1px solid #dc2626', padding: '24px' }}
       >
-        <h2 className="heading-3" style={{ marginBottom: '8px', color: '#991b1b' }}>
-          Access denied
-        </h2>
-        <p style={{ color: '#555' }}>
-          You need admin privileges to view this page.
-        </p>
+        <h2 className="heading-3" style={{ marginBottom: '8px', color: '#991b1b' }}>Error</h2>
+        <p style={{ color: '#555' }}>Failed to load users.</p>
       </div>
     );
   }
@@ -145,6 +259,62 @@ export function UsersList() {
     queryClient.invalidateQueries({ queryKey: ['users'] });
   };
 
+  // Non-admin: show team members
+  if (!isAdminOrManager) {
+    const teamMembers = teamData?.users ?? [];
+    const teamName = teamData?.team?.name ?? 'Your Team';
+
+    return (
+      <div>
+        <div style={{ marginBottom: '32px' }}>
+          <h1 className="heading-1" style={{ margin: 0 }}>
+            {teamName}
+          </h1>
+          <p className="text-large" style={{ color: '#555', margin: '8px 0 0' }}>
+            {teamMembers.length} team {teamMembers.length === 1 ? 'member' : 'members'}
+          </p>
+        </div>
+
+        {teamMembers.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '48px', color: '#555' }}>
+            You are not assigned to a team yet.
+          </div>
+        ) : (
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-mint)', borderBottom: 'var(--border-width) solid var(--border-color)' }}>
+                  {['Member', 'Role', 'Joined', 'Actions'].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: '16px 24px',
+                        textAlign: h === 'Actions' ? 'right' : 'left',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        color: 'var(--dark)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {teamMembers.map((user) => (
+                  <UserRow key={user.id} user={user} isAdmin={false} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Admin/manager: show all users
   return (
     <div>
       <div style={{ marginBottom: '32px' }}>
@@ -169,7 +339,7 @@ export function UsersList() {
 
       {inviteSuccess && (
         <div className="card" style={{ marginBottom: '24px', background: 'var(--bg-mint)', border: '2px solid var(--border-default)' }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>Invite sent. They’ll receive an email with a link to join the workspace.</p>
+          <p style={{ margin: 0, fontWeight: 600 }}>Invite sent. They'll receive an email with a link to join the workspace.</p>
         </div>
       )}
 
@@ -177,7 +347,7 @@ export function UsersList() {
         <div className="card" style={{ marginBottom: '24px', maxWidth: '420px' }}>
           <h2 className="heading-3" style={{ marginBottom: '12px' }}>Invite to workspace</h2>
           <p style={{ color: '#555', fontSize: '14px', marginBottom: '16px' }}>
-            Enter their email. They’ll get a link to create an account and join this workspace.
+            Enter their email. They'll get a link to create an account and join this workspace.
           </p>
           <form onSubmit={handleInvite}>
             <div style={{ marginBottom: '12px' }}>
@@ -208,188 +378,38 @@ export function UsersList() {
         </div>
       )}
 
-      <div
-        className="card"
-        style={{
-          padding: 0,
-          overflow: 'hidden',
-        }}
-      >
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr
-              style={{
-                background: 'var(--bg-mint)',
-                borderBottom: 'var(--border-width) solid var(--border-color)',
-              }}
-            >
-              <th
-                style={{
-                  padding: '16px 24px',
-                  textAlign: 'left',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  color: 'var(--dark)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                User
-              </th>
-              <th
-                style={{
-                  padding: '16px 24px',
-                  textAlign: 'left',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  color: 'var(--dark)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Role
-              </th>
-              <th
-                style={{
-                  padding: '16px 24px',
-                  textAlign: 'left',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  color: 'var(--dark)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Team
-              </th>
-              <th
-                style={{
-                  padding: '16px 24px',
-                  textAlign: 'left',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  color: 'var(--dark)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Joined
-              </th>
-              <th
-                style={{
-                  padding: '16px 24px',
-                  textAlign: 'right',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  color: 'var(--dark)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Actions
-              </th>
+            <tr style={{ background: 'var(--bg-mint)', borderBottom: 'var(--border-width) solid var(--border-color)' }}>
+              {['User', 'Role', 'Team', 'Joined', 'Actions'].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '16px 24px',
+                    textAlign: h === 'Actions' ? 'right' : 'left',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: 'var(--dark)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {users?.users.map((user) => (
-              <tr
+              <UserRow
                 key={user.id}
-                style={{
-                  borderBottom: 'var(--border-width) solid var(--border-color)',
-                  background: 'var(--bg-white)',
-                }}
-              >
-                <td style={{ padding: '16px 24px' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '14px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '44px',
-                        height: '44px',
-                        borderRadius: '50%',
-                        background: user.image ? 'transparent' : 'var(--dark)',
-                        border: '1px solid var(--border-default)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '18px',
-                        fontWeight: 700,
-                        color: 'white',
-                        overflow: 'hidden',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {user.image ? (
-                        <img
-                          src={user.image}
-                          alt=""
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        user.name?.charAt(0) || user.email.charAt(0).toUpperCase()
-                      )}
-                    </div>
-                    <div>
-                      <p style={{ fontWeight: 600, margin: 0 }}>
-                        {user.name || 'Unnamed User'}
-                      </p>
-                      <p style={{ fontSize: '14px', color: '#555', margin: '2px 0 0' }}>
-                        {user.email}
-                      </p>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: '16px 24px' }}>
-                  <select
-                    className="input"
-                    value={user.role}
-                    onChange={(e) => updateUserRole(user.id, e.target.value)}
-                    style={{ maxWidth: '160px' }}
-                  >
-                    <option value="admin">admin</option>
-                    <option value="manager">manager</option>
-                    <option value="user">user</option>
-                  </select>
-                </td>
-                <td style={{ padding: '16px 24px' }}>
-                  <select
-                    className="input"
-                    value={user.team_id ?? ''}
-                    onChange={(e) => updateUserTeam(user.id, e.target.value || null)}
-                    style={{ maxWidth: '200px' }}
-                  >
-                    <option value="">Unassigned</option>
-                    {(teams?.teams ?? []).map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </td>
-                <td style={{ padding: '16px 24px', color: '#555' }}>
-                  {new Date(user.createdAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
-                </td>
-                <td style={{ padding: '16px 24px', textAlign: 'right' }}>
-                  <Link
-                    to={`/users/${user.id}`}
-                    className="btn btn-primary"
-                    style={{
-                      padding: '8px 16px',
-                      fontSize: '14px',
-                      textDecoration: 'none',
-                    }}
-                  >
-                    View profile
-                  </Link>
-                </td>
-              </tr>
+                user={user}
+                isAdmin={true}
+                teams={teams?.teams}
+                updateUserRole={updateUserRole}
+                updateUserTeam={updateUserTeam}
+              />
             ))}
           </tbody>
         </table>
