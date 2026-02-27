@@ -139,10 +139,10 @@ export function Onboarding() {
           backgroundClip: 'text',
         }}
       >
-        AI usage telemetry and managed keys for your team
+        Isolated AI Gateways for Limitless Innovation
       </h1>
       <p style={{ color: '#475569', fontSize: '16px', lineHeight: 1.65, marginBottom: '32px', fontWeight: 500 }}>
-        Stereos helps engineering teams observe AI usage, provision OpenRouter keys, and keep costs under control.
+        Stereos helps engineering teams observe AI usage, provision virtual keys, and keep costs under control.
       </p>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {[
