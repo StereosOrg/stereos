@@ -275,6 +275,7 @@ export function AIGateway() {
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [toolStep, setToolStep] = useState(0);
   const [typedText, setTypedText] = useState('');
+  const [activeTab, setActiveTab] = useState('api');
   const typingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data, isLoading } = useQuery<GatewayData>({
@@ -352,14 +353,16 @@ export function AIGateway() {
   );
 
   useEffect(() => {
+    if (activeTab !== 'tool-connection') return;
     const timer = setInterval(() => {
       setToolStep(s => (s + 1) % KILO_STEPS.length);
       setTypedText('');
     }, 2800);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
+    if (activeTab !== 'tool-connection') return;
     if (typingRef.current) clearInterval(typingRef.current);
     const value = stepValues[toolStep];
     if (!value) return;
@@ -367,12 +370,15 @@ export function AIGateway() {
     typingRef.current = setInterval(() => {
       i++;
       setTypedText(value.slice(0, i));
-      if (i >= value.length && typingRef.current) clearInterval(typingRef.current);
+      if (i >= value.length && typingRef.current) {
+        clearInterval(typingRef.current);
+        typingRef.current = null;
+      }
     }, 35);
     return () => {
       if (typingRef.current) clearInterval(typingRef.current);
     };
-  }, [toolStep, stepValues]);
+  }, [toolStep, stepValues, activeTab]);
 
   if (isLoading) {
     return (
@@ -497,7 +503,7 @@ export function AIGateway() {
         {/* Example Requests - spans full width */}
         {isProvisioned && (
           <div style={{ ...cardStyle, gridColumn: '1 / -1' }}>
-            <Tabs defaultValue="api">
+            <Tabs defaultValue="api" onValueChange={(v) => setActiveTab(v)}>
               <TabsList className="settings-subtabs-list" style={{ marginBottom: '20px' }}>
                 <TabsTrigger value="api" className="settings-subtabs-trigger">API</TabsTrigger>
                 <TabsTrigger value="tool-connection" className="settings-subtabs-trigger">Tool Connection</TabsTrigger>
