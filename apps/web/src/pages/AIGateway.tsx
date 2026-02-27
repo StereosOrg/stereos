@@ -114,6 +114,147 @@ print(data.get("choices", [{}])[0].get("message", {}).get("content"))`;
 }'`;
 }
 
+function KiloCodeLogo({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="3" fill="#E8D000" />
+      {/* Left column of K */}
+      <rect x="4" y="4" width="4" height="4" fill="#1a1a2e" />
+      <rect x="4" y="10" width="4" height="4" fill="#1a1a2e" />
+      <rect x="4" y="16" width="4" height="4" fill="#1a1a2e" />
+      {/* Top arm of K */}
+      <rect x="10" y="4" width="4" height="4" fill="#1a1a2e" />
+      {/* Bottom arm of K */}
+      <rect x="10" y="16" width="4" height="4" fill="#1a1a2e" />
+      <rect x="16" y="10" width="4" height="4" fill="#1a1a2e" />
+      <rect x="16" y="16" width="4" height="4" fill="#1a1a2e" />
+    </svg>
+  );
+}
+
+interface KiloMockPanelProps {
+  toolStep: number;
+  typedText: string;
+  proxyUrl: string;
+}
+
+function KiloMockPanel({ toolStep, typedText, proxyUrl }: KiloMockPanelProps) {
+  const fields = ['panel', 'provider', 'baseUrl', 'apiKey', 'model', 'headers'];
+  const fullValues: Record<string, string> = {
+    panel: '',
+    provider: 'OpenAI Compatible',
+    baseUrl: proxyUrl,
+    apiKey: 'vk_••••••••••••',
+    model: 'openai/gpt-4o',
+    headers: 'application/json',
+  };
+
+  const activeField = fields[toolStep];
+
+  const displayValue = (field: string) => {
+    const idx = fields.indexOf(field);
+    if (toolStep > idx) return fullValues[field];
+    if (toolStep === idx) return typedText;
+    return '';
+  };
+
+  const isActive = (field: string) => activeField === field;
+
+  const mockField = (field: string): React.CSSProperties => ({
+    padding: '7px 10px',
+    background: isActive(field) ? 'rgba(232,208,0,0.10)' : '#2a2a3e',
+    border: `1px solid ${isActive(field) ? '#e8d000' : '#3a3a5e'}`,
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontFamily: 'monospace',
+    color: '#e0e0e0',
+    minHeight: '30px',
+    display: 'flex',
+    alignItems: 'center',
+    transition: 'all 0.3s ease',
+    overflow: 'hidden',
+  });
+
+  const label: React.CSSProperties = {
+    fontSize: '11px',
+    fontWeight: 600,
+    color: '#666',
+    marginBottom: '4px',
+    marginTop: '12px',
+    letterSpacing: '0.02em',
+  };
+
+  const cursor = <span className="kilo-cursor">|</span>;
+
+  const val = (field: string, full: string, placeholder: string) => {
+    const v = displayValue(field);
+    return v
+      ? <>{v}{isActive(field) && cursor}</>
+      : <span style={{ color: '#444' }}>{placeholder}</span>;
+  };
+
+  return (
+    <div style={{ background: '#1e1e2e', borderRadius: '10px', overflow: 'hidden', border: '1px solid #2a2a3e' }}>
+      {/* Header */}
+      <div style={{ background: '#181825', padding: '10px 16px', borderBottom: '1px solid #2a2a3e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <KiloCodeLogo size={16} />
+        <span style={{ fontWeight: 700, color: '#cdd6f4', fontSize: '13px' }}>Kilo Code — Providers</span>
+      </div>
+
+      <div style={{ padding: '16px' }}>
+        {/* Config profile — always shown, never animated */}
+        <div style={label}>Configuration Profile</div>
+        <div style={{ ...mockField('panel'), color: '#555' }}>default (Active) ▾</div>
+
+        <div style={label}>API Provider</div>
+        <div style={mockField('provider')}>
+          {val('provider', 'OpenAI Compatible', 'Select provider...')}
+          {displayValue('provider') && !isActive('provider') && <span style={{ marginLeft: 'auto', color: '#888' }}> ▾</span>}
+        </div>
+
+        <div style={label}>Base URL</div>
+        <div style={mockField('baseUrl')}>
+          {val('baseUrl', proxyUrl, 'https://...')}
+        </div>
+
+        <div style={label}>API Key</div>
+        <div style={mockField('apiKey')}>
+          {val('apiKey', 'vk_••••••••••••', 'Enter key...')}
+        </div>
+
+        <div style={label}>Model</div>
+        <div style={mockField('model')}>
+          {val('model', 'openai/gpt-4o', 'Select model...')}
+          {displayValue('model') && !isActive('model') && <span style={{ marginLeft: 'auto', color: '#888' }}> ▾</span>}
+        </div>
+
+        <div style={{ ...label, display: 'flex', justifyContent: 'space-between' }}>
+          <span>Custom Headers</span>
+          <span style={{ color: '#555', fontSize: '14px', cursor: 'default' }}>+</span>
+        </div>
+        <div style={{
+          background: isActive('headers') ? 'rgba(232,208,0,0.08)' : '#2a2a3e',
+          border: `1px solid ${isActive('headers') ? '#e8d000' : '#3a3a5e'}`,
+          borderRadius: '6px',
+          overflow: 'hidden',
+          transition: 'all 0.3s ease',
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+            <div style={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace', color: '#888', borderRight: '1px solid #3a3a5e' }}>Authorization</div>
+            <div style={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace', color: '#e0e0e0' }}>Bearer •••</div>
+            <div style={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace', color: '#888', borderRight: '1px solid #3a3a5e', borderTop: '1px solid #3a3a5e' }}>Content-Type</div>
+            <div style={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace', color: '#e0e0e0', borderTop: '1px solid #3a3a5e', display: 'flex', alignItems: 'center' }}>
+              {displayValue('headers')
+                ? <>{displayValue('headers')}{isActive('headers') && cursor}</>
+                : <span style={{ color: '#444' }}>&nbsp;</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const KILO_STEPS: { label: string; field: string }[] = [
   { label: 'Open Kilo Code → click the Settings icon', field: 'panel' },
   { label: 'Set API Provider to OpenAI Compatible', field: 'provider' },
